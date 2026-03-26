@@ -9,17 +9,14 @@
 #include "Util/Image.hpp"
 #include "Util/GameObject.hpp"
 #include "Keyboard.hpp"
+#include "Note.hpp" // 引入音符類別
 #include <SDL.h>
 #include <memory>
+#include <vector>
 
 class App {
 public:
-    enum class State {
-        START,
-        UPDATE,
-        END,
-    };
-
+    enum class State { START, UPDATE, END };
     State GetCurrentState() const;
     void Start();
     void Update();
@@ -31,15 +28,19 @@ private:
     std::shared_ptr<Keyboard> m_Keyboard;
 
     // --- 音效與視覺 ---
-    std::shared_ptr<Util::SFX> m_SoundEffect;
+    std::vector<std::shared_ptr<Util::SFX>> m_TromboneNotes;
     std::shared_ptr<Util::GameObject> m_Cursor;
-    bool m_WasBlowing = false;
 
-    // --- 音樂計時器 ---
+    // --- UI 判定線與音符陣列 ---
+    std::shared_ptr<Util::GameObject> m_JudgmentLine;
+    std::vector<std::shared_ptr<Note>> m_Notes;
+
+    bool m_WasBlowing = false;
+    int m_CurrentNoteIndex = -1;
+
+    // --- 時間 ---
     Uint32 m_StartTime = 0;
     Uint32 m_CurrentMusicTime = 0;
-
-    // --- 長按 R 重新開始的相關變數 ---
     Uint32 m_RestartHoldStartTime = 0;
     bool m_IsR_Pressed = false;
 

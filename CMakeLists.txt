@@ -37,6 +37,8 @@ add_executable(${PROJECT_NAME}
     ${HEADER_FILES}
         include/keyboard.hpp
         src/keyboard.cpp
+        include/Note.hpp
+        src/note.cpp
 )
 
 if(MSVC)
