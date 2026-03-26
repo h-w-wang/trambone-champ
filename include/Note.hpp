@@ -8,20 +8,18 @@
 
 class Note {
 public:
-    // 建立音符時，告訴它要在哪個高度 (yPos)，以及在音樂的哪一毫秒 (targetTime) 抵達判定線
     Note(float yPos, float targetTime);
-
-    // 每一幀根據目前的音樂時間來更新座標
     void Update(Uint32 currentMusicTime);
-    void Draw();
 
-    // 檢查音符是不是已經跑到畫面最左邊外側了 (用來清除不需要的音符)
+    // ++ 補上這行最關鍵的程式碼：讓 App 可以拿到 GameObject 來畫在畫面上
+    std::shared_ptr<Util::GameObject> GetGameObject() const { return m_GameObject; }
+
     bool IsOut() const;
 
 private:
-    std::shared_ptr<Util::GameObject> m_GameObject;
     float m_TargetTime;
     float m_YPos;
+    std::shared_ptr<Util::GameObject> m_GameObject;
 };
 
 #endif

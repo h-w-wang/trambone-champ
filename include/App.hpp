@@ -9,7 +9,7 @@
 #include "Util/Image.hpp"
 #include "Util/GameObject.hpp"
 #include "Keyboard.hpp"
-#include "Note.hpp" // 引入音符類別
+#include "Note.hpp"
 #include <SDL.h>
 #include <memory>
 #include <vector>
@@ -27,18 +27,21 @@ private:
     std::shared_ptr<Util::BGM> m_BGM;
     std::shared_ptr<Keyboard> m_Keyboard;
 
-    // --- 音效與視覺 ---
+    // --- 視覺與音效物件 ---
+    std::shared_ptr<Util::GameObject> m_Background;
     std::vector<std::shared_ptr<Util::SFX>> m_TromboneNotes;
-    std::shared_ptr<Util::GameObject> m_Cursor;
+    std::shared_ptr<Util::GameObject> m_Indicator; // 左側的判定線
+    std::vector<std::shared_ptr<Note>> m_Notes;    // 飛過來的音符
 
-    // --- UI 判定線與音符陣列 ---
-    std::shared_ptr<Util::GameObject> m_JudgmentLine;
-    std::vector<std::shared_ptr<Note>> m_Notes;
+    // --- 玩家控制的 Pattern 相關 ---
+    std::shared_ptr<Util::GameObject> m_Pattern;       // 玩家控制的點
+    std::shared_ptr<Util::Image> m_PatternIdleImage;   // 沒按下的圖片
+    std::shared_ptr<Util::Image> m_PatternPlayImage;   // 按下發光的圖片
 
     bool m_WasBlowing = false;
     int m_CurrentNoteIndex = -1;
 
-    // --- 時間 ---
+    // --- 時間管理 ---
     Uint32 m_StartTime = 0;
     Uint32 m_CurrentMusicTime = 0;
     Uint32 m_RestartHoldStartTime = 0;
