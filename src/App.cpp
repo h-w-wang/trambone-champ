@@ -13,32 +13,27 @@ void App::Start() {
     m_BGM->SetVolume(64);
     m_BGM->Play(-1);
 
-    // 1. 背景圖片
     m_Background = std::make_shared<Util::GameObject>();
     m_Background->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/titlescreen_bg.jpg"));
+    m_Background->SetZIndex(-10.0f);
 
-    // ==========================================
-    // 2. [視覺修正] 左側那條白線：換成 warmup-light.png，並壓細長
-    // ==========================================
     m_Indicator = std::make_shared<Util::GameObject>();
     m_Indicator->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/warmup-light.png"));
-    m_Indicator->m_Transform.translation = {-300.0f, 0.0f}; // 固定在左邊 X = -300
-    m_Indicator->m_Transform.scale = {1.0f, 2.0f}; // 寬度縮到 0.02 變成一條細長白線！
+    m_Indicator->m_Transform.translation = {-300.0f, 0.0f};
+    m_Indicator->m_Transform.scale = {1.0f, 2.0f};
+    m_Indicator->SetZIndex(1.0f);
 
-    // 3. 圓點游標 (Idle)
     m_PatternIdleImage = std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png");
-    // 4. 圓點游標 (Play - 按下去發光)
     m_PatternPlayImage = std::make_shared<Util::Image>(RESOURCE_DIR "/player-note-dot-ON.png");
-
-    // 建立圓點游標物件
     m_Pattern = std::make_shared<Util::GameObject>();
     m_Pattern->SetDrawable(m_PatternIdleImage);
+    m_Pattern->SetZIndex(100.0f);
 
-    // [測試用] 這裡原本是飛過來的東西，我們不用動它，因為下一步我們要直接改寫音符的邏輯！
-    m_Notes.push_back(std::make_shared<Note>(0.0f, 2000));
-    m_Notes.push_back(std::make_shared<Note>(150.0f, 3000));
-    m_Notes.push_back(std::make_shared<Note>(-150.0f, 4000));
-    m_Notes.push_back(std::make_shared<Note>(0.0f, 5000));
+    // 🚀 修正譜面：參數變成 4 個 (開始Y, 結束Y, 目標時間, 持續時間)
+    // 目前我們先讓 開始Y = 結束Y，做出水平的長音符
+    m_Notes.push_back(std::make_shared<Note>(0.0f, 0.0f, 2000.0f, 500.0f));     // 短音
+    m_Notes.push_back(std::make_shared<Note>(150.0f, 150.0f, 3000.0f, 1500.0f));  // 長音
+    m_Notes.push_back(std::make_shared<Note>(-150.0f, -150.0f, 5000.0f, 2000.0f)); // 超長音
 
     SDL_ShowCursor(SDL_DISABLE);
     m_StartTime = SDL_GetTicks();
@@ -52,40 +47,40 @@ void App::RestartLevel() {
 
 void App::Update() {
     m_CurrentMusicTime = SDL_GetTicks() - m_StartTime;
-    m_Keyboard->Update();
     auto cursorPos = Util::Input::GetCursorPosition();
 
-    // 更新 Note 座標
     for (auto& note : m_Notes) {
         note->Update(m_CurrentMusicTime);
     }
 
-    // ==========================================
-    // 2. [邏輯修正] 更新圓點游標 (小白點)
-    // 核心解法：死死鎖在白線上 (X = -300)，並且疊在白線上方，只有 Y 軸跟著滑鼠滑動！
-    // ==========================================
     m_Pattern->m_Transform.translation = {-300.0f, cursorPos.y};
-    m_Pattern->m_Transform.scale = {0.3f, 0.3f}; // 圓點的大小
+    m_Pattern->m_Transform.scale = {0.3f, 0.3f};
 
-    // 點擊變換圖片邏輯
-    bool currentBlowing = m_Keyboard->IsBlowing();
+    bool currentBlowing = Util::Input::IsKeyDown(Util::Keycode::MOUSE_LB) ||
+                          Util::Input::IsKeyPressed(Util::Keycode::MOUSE_LB) ||
+                          Util::Input::IsKeyDown(Util::Keycode::SPACE) ||
+                          Util::Input::IsKeyPressed(Util::Keycode::SPACE);
+
     if (currentBlowing) {
         m_Pattern->SetDrawable(m_PatternPlayImage);
     } else {
         m_Pattern->SetDrawable(m_PatternIdleImage);
     }
 
-    // 繪圖順序：背景 -> 白線 -> 音符 -> 圓點 (點點要在最上面)
     m_Background->Draw();
     m_Indicator->Draw();
+
+    // 🚀 修正畫圖邏輯：現在 Note 裡面有很多個物件 (陣列)，要跑迴圈把它們全畫出來
     for (auto& note : m_Notes) {
-        note->GetGameObject()->Draw();
+        for (auto& obj : note->GetGameObjects()) {
+            obj->Draw();
+        }
     }
+
     m_Pattern->Draw();
 
     m_WasBlowing = currentBlowing;
 
-    // 控制邏輯
     if (Util::Input::IsKeyPressed(Util::Keycode::R)) {
         m_RestartHoldStartTime = SDL_GetTicks();
         m_IsR_Pressed = true;
@@ -96,12 +91,6 @@ void App::Update() {
         }
     } else {
         m_IsR_Pressed = false;
-    }
-
-    if (Util::Input::IsKeyPressed(Util::Keycode::MOUSE_LB)) {
-        if (cursorPos.x < -400 && cursorPos.y > 250) {
-            m_CurrentState = State::END;
-        }
     }
 }
 

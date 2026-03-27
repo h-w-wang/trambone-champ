@@ -33,7 +33,7 @@ private:
     std::shared_ptr<Util::GameObject> m_Indicator; // 左側的判定線
     std::vector<std::shared_ptr<Note>> m_Notes;    // 飛過來的音符
 
-    // --- 玩家控制的 Pattern 相關 ---
+    // --- 玩家控制的 Pattern 相關 --
     std::shared_ptr<Util::GameObject> m_Pattern;       // 玩家控制的點
     std::shared_ptr<Util::Image> m_PatternIdleImage;   // 沒按下的圖片
     std::shared_ptr<Util::Image> m_PatternPlayImage;   // 按下發光的圖片
