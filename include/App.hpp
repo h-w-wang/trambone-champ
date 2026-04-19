@@ -13,6 +13,7 @@
 #include <SDL.h>
 #include <memory>
 #include <vector>
+#include <string>
 
 class App {
 public:
@@ -27,11 +28,22 @@ private:
     std::shared_ptr<Util::BGM> m_BGM;
     std::shared_ptr<Keyboard> m_Keyboard;
 
+    // --- 歌曲資料結構與清單 ---
+    struct SongInfo {
+        std::string folderName;
+        std::string displayName;
+    };
+
+    std::vector<SongInfo> m_SongList;
+    int m_CurrentSongIndex = -1;
+
+    void LoadSong(int index);
+
     // --- 視覺與音效物件 ---
     std::shared_ptr<Util::GameObject> m_Background;
-    std::vector<std::shared_ptr<Util::SFX>> m_TromboneNotes; // 25 個半音效
-    std::shared_ptr<Util::GameObject> m_Indicator;           // 左側的判定線
-    std::vector<std::shared_ptr<Note>> m_Notes;              // 飛過來的音符
+    std::vector<std::shared_ptr<Util::SFX>> m_TromboneNotes;
+    std::shared_ptr<Util::GameObject> m_Indicator;
+    std::vector<std::shared_ptr<Note>> m_Notes;
 
     // --- 玩家控制的 Pattern 相關 --
     std::shared_ptr<Util::GameObject> m_Pattern;
@@ -41,18 +53,13 @@ private:
     bool m_WasBlowing = false;
     int m_CurrentNoteIndex = -1;
 
-    // --- 時間管理 ---
+    // --- 時間與狀態管理 ---
     Uint32 m_StartTime = 0;
     Uint32 m_CurrentMusicTime = 0;
-    Uint32 m_RestartHoldStartTime = 0;
-    bool m_IsR_Pressed = false;
+    Uint32 m_LastPlayTime = 0; // 🚀 就是少了這一行！用來控制滑音與淡出時間
 
-    void RestartLevel();
-
-    // --- 錄製譜面與視覺輔助 ---
-    Uint32 m_RecordStartTime = 0;
-    float m_RecordStartY = 0.0f;
-    std::vector<std::shared_ptr<Util::GameObject>> m_GuideLines; // 25條參考線
+    // --- 視覺輔助 ---
+    std::vector<std::shared_ptr<Util::GameObject>> m_GuideLines;
 };
 
 #endif
