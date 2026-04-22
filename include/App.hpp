@@ -32,6 +32,8 @@ private:
     struct SongInfo {
         std::string folderName;
         std::string displayName;
+        float bpm;       // 這首歌的節拍速度
+        float offsetMs;  // 延遲補償（正數代表音符提早，負數代表音符延後）
     };
 
     std::vector<SongInfo> m_SongList;
@@ -45,7 +47,7 @@ private:
     std::shared_ptr<Util::GameObject> m_Indicator;
     std::vector<std::shared_ptr<Note>> m_Notes;
 
-    // --- 玩家控制的 Pattern 相關 --
+    // --- 玩家控制的 Pattern 相關 ---
     std::shared_ptr<Util::GameObject> m_Pattern;
     std::shared_ptr<Util::Image> m_PatternIdleImage;
     std::shared_ptr<Util::Image> m_PatternPlayImage;
@@ -56,7 +58,7 @@ private:
     // --- 時間與狀態管理 ---
     Uint32 m_StartTime = 0;
     Uint32 m_CurrentMusicTime = 0;
-    Uint32 m_LastPlayTime = 0; // 🚀 就是少了這一行！用來控制滑音與淡出時間
+    Uint32 m_LastPlayTime = 0;
 
     // --- 視覺輔助 ---
     std::vector<std::shared_ptr<Util::GameObject>> m_GuideLines;
