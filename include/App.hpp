@@ -17,9 +17,10 @@
 
 class App {
 public:
-    enum class State { START, UPDATE, END };
+    enum class State { START, SELECT, UPDATE, END }; // 🚀 新增 SELECT 狀態
     State GetCurrentState() const;
     void Start();
+    void SelectUpdate(); // 🚀 新增選歌畫面的更新函式
     void Update();
     void End();
 
@@ -28,12 +29,11 @@ private:
     std::shared_ptr<Util::BGM> m_BGM;
     std::shared_ptr<Keyboard> m_Keyboard;
 
-    // --- 歌曲資料結構與清單 ---
     struct SongInfo {
         std::string folderName;
         std::string displayName;
-        float bpm;       // 這首歌的節拍速度
-        float offsetMs;  // 延遲補償（正數代表音符提早，負數代表音符延後）
+        float bpm;
+        float offsetMs;
     };
 
     std::vector<SongInfo> m_SongList;
@@ -41,13 +41,11 @@ private:
 
     void LoadSong(int index);
 
-    // --- 視覺與音效物件 ---
     std::shared_ptr<Util::GameObject> m_Background;
     std::vector<std::shared_ptr<Util::SFX>> m_TromboneNotes;
     std::shared_ptr<Util::GameObject> m_Indicator;
     std::vector<std::shared_ptr<Note>> m_Notes;
 
-    // --- 玩家控制的 Pattern 相關 ---
     std::shared_ptr<Util::GameObject> m_Pattern;
     std::shared_ptr<Util::Image> m_PatternIdleImage;
     std::shared_ptr<Util::Image> m_PatternPlayImage;
@@ -55,12 +53,10 @@ private:
     bool m_WasBlowing = false;
     int m_CurrentNoteIndex = -1;
 
-    // --- 時間與狀態管理 ---
     Uint32 m_StartTime = 0;
     Uint32 m_CurrentMusicTime = 0;
     Uint32 m_LastPlayTime = 0;
 
-    // --- 視覺輔助 ---
     std::vector<std::shared_ptr<Util::GameObject>> m_GuideLines;
 };
 

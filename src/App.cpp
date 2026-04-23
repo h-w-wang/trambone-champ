@@ -16,13 +16,11 @@ App::State App::GetCurrentState() const {
 void App::Start() {
     m_Keyboard = std::make_shared<Keyboard>();
 
-    // 1. 初始化 25 個長號音效
     for (int i = 0; i <= 24; ++i) {
         std::string filePath = RESOURCE_DIR "/notes/note_" + std::to_string(i) + ".wav";
         m_TromboneNotes.push_back(std::make_shared<Util::SFX>(filePath));
     }
 
-    // 2. 初始化背景與參考線
     m_Background = std::make_shared<Util::GameObject>();
     m_Background->SetZIndex(-10.0f);
     m_Background->m_Transform.scale = {1.5f, 1.5f};
@@ -54,21 +52,38 @@ void App::Start() {
     m_Pattern->SetDrawable(m_PatternIdleImage);
     m_Pattern->SetZIndex(100.0f);
 
-    // 3. 註冊歌曲清單 (稻香 BPM=164)
     m_SongList = {
         {"song1", "稻香", 164.0f, 0.0f},
         {"song2", "第二首歌", 164.0f, 0.0f},
         {"song3", "第三首歌", 120.0f, 0.0f}
     };
 
-    LoadSong(0);
-    SDL_ShowCursor(SDL_DISABLE);
-    m_CurrentState = State::UPDATE;
+    // 🚀 關鍵修改：啟動後不載入歌曲，直接進入選歌狀態
+    std::cout << "[SYSTEM] 進入選歌畫面，請按下數字鍵 1, 2 或 3..." << std::endl;
+    m_CurrentState = State::SELECT;
+}
+
+void App::SelectUpdate() {
+    // 🚀 選歌畫面邏輯：偵測按鍵
+    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_1)) {
+        LoadSong(0);
+        m_CurrentState = State::UPDATE;
+    }
+    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_2)) {
+        LoadSong(1);
+        m_CurrentState = State::UPDATE;
+    }
+    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_3)) {
+        LoadSong(2);
+        m_CurrentState = State::UPDATE;
+    }
+
+    // 在選歌畫面時，我們不呼叫任何 Draw()，畫面會維持黑色（由 Context 每幀清空）
+    // 你也可以選擇在這裡 Draw 一張「Press 1-3 to Start」的提示圖
 }
 
 void App::LoadSong(int index) {
     if (index < 0 || index >= static_cast<int>(m_SongList.size())) return;
-    if (index == m_CurrentSongIndex) return;
 
     m_CurrentSongIndex = index;
     const auto& song = m_SongList[index];
@@ -78,11 +93,9 @@ void App::LoadSong(int index) {
     Mix_HaltChannel(-1);
 
     m_Background->SetDrawable(std::make_shared<Util::Image>(baseDir + "bg.png"));
-
     m_BGM = std::make_shared<Util::BGM>(baseDir + "song.ogg");
     m_BGM->SetVolume(64);
 
-    // 解析 .tmb 譜面
     std::ifstream file(baseDir + "song.tmb");
     if (file.is_open()) {
         std::string jsonContent((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -111,18 +124,17 @@ void App::LoadSong(int index) {
         file.close();
     }
 
-    // 音樂與碼表同步啟動
     m_BGM->Play(-1);
     m_StartTime = SDL_GetTicks();
-
     m_CurrentMusicTime = 0;
     m_WasBlowing = false;
     m_CurrentNoteIndex = -1;
     m_LastPlayTime = 0;
-    std::cout << "已成功載入歌曲: " << song.displayName << std::endl;
+    std::cout << "[SYSTEM] 已成功載入歌曲: " << song.displayName << std::endl;
 }
 
 void App::Update() {
+    // 🚀 在遊戲中按數字鍵依然可以隨時切換歌曲
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_1)) LoadSong(0);
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_2)) LoadSong(1);
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_3)) LoadSong(2);
@@ -142,14 +154,11 @@ void App::Update() {
     m_Pattern->m_Transform.translation = {-300.0f, currentY};
     m_Pattern->m_Transform.scale = {0.3f, 0.3f};
 
-
     Uint32 mouseState = SDL_GetMouseState(NULL, NULL);
     bool mouseBlowing = (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     const Uint8* keyState = SDL_GetKeyboardState(NULL);
     bool spaceBlowing = keyState[SDL_SCANCODE_SPACE];
-
     bool currentBlowing = mouseBlowing || spaceBlowing;
-
 
     float noteFloat = (currentY + 480.0f) / 40.0f;
     int targetNoteIndex = m_CurrentNoteIndex;
@@ -185,15 +194,11 @@ void App::Update() {
         }
         m_Pattern->SetDrawable(m_PatternPlayImage);
     } else {
-        if (m_WasBlowing) {
-            Mix_HaltChannel(-1);
-        }
+        if (m_WasBlowing) Mix_HaltChannel(-1);
         m_Pattern->SetDrawable(m_PatternIdleImage);
     }
 
     m_WasBlowing = currentBlowing;
-
-    // 繪製順序
     m_Background->Draw();
     for (auto& line : m_GuideLines) line->Draw();
     m_Indicator->Draw();
