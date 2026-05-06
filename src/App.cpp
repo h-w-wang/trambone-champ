@@ -58,13 +58,11 @@ void App::Start() {
         {"song3", "第三首歌", 120.0f, 0.0f}
     };
 
-    // 🚀 關鍵修改：啟動後不載入歌曲，直接進入選歌狀態
     std::cout << "[SYSTEM] 進入選歌畫面，請按下數字鍵 1, 2 或 3..." << std::endl;
     m_CurrentState = State::SELECT;
 }
 
 void App::SelectUpdate() {
-    // 🚀 選歌畫面邏輯：偵測按鍵
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_1)) {
         LoadSong(0);
         m_CurrentState = State::UPDATE;
@@ -77,9 +75,6 @@ void App::SelectUpdate() {
         LoadSong(2);
         m_CurrentState = State::UPDATE;
     }
-
-    // 在選歌畫面時，我們不呼叫任何 Draw()，畫面會維持黑色（由 Context 每幀清空）
-    // 你也可以選擇在這裡 Draw 一張「Press 1-3 to Start」的提示圖
 }
 
 void App::LoadSong(int index) {
@@ -130,26 +125,30 @@ void App::LoadSong(int index) {
     m_WasBlowing = false;
     m_CurrentNoteIndex = -1;
     m_LastPlayTime = 0;
+    m_LastBeat = 0.0f;
+    m_PerfectCount = 0;
+    m_GoodCount = 0;
+    m_MissCount = 0;
     std::cout << "[SYSTEM] 已成功載入歌曲: " << song.displayName << std::endl;
 }
 
 void App::Update() {
-    // 🚀 在遊戲中按數字鍵依然可以隨時切換歌曲
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_1)) LoadSong(0);
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_2)) LoadSong(1);
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_3)) LoadSong(2);
 
     m_CurrentMusicTime = SDL_GetTicks() - m_StartTime;
-    auto cursorPos = Util::Input::GetCursorPosition();
-
     const auto& currentSong = m_SongList[m_CurrentSongIndex];
     float adjustedTime = static_cast<float>(m_CurrentMusicTime) + currentSong.offsetMs;
     float currentBeat = (adjustedTime / 60000.0f) * currentSong.bpm;
 
-    for (auto& note : m_Notes) {
-        note->Update(currentBeat);
-    }
+    // 🚀 算出這一幀經過了多少節拍長度
+    float deltaBeat = currentBeat - m_LastBeat;
+    if (deltaBeat < 0.0f) deltaBeat = 0.0f; // 防呆
+    m_LastBeat = currentBeat;
 
+    // === 步驟 1：先抓取玩家的游標與按鍵狀態 ===
+    auto cursorPos = Util::Input::GetCursorPosition();
     float currentY = std::clamp(cursorPos.y, -480.0f, 480.0f);
     m_Pattern->m_Transform.translation = {-300.0f, currentY};
     m_Pattern->m_Transform.scale = {0.3f, 0.3f};
@@ -171,6 +170,7 @@ void App::Update() {
         }
     }
 
+    // === 步驟 2：處理長號的聲音播放邏輯 ===
     Uint32 currentTime = SDL_GetTicks();
     bool shouldPlay = false;
 
@@ -197,8 +197,34 @@ void App::Update() {
         if (m_WasBlowing) Mix_HaltChannel(-1);
         m_Pattern->SetDrawable(m_PatternIdleImage);
     }
-
     m_WasBlowing = currentBlowing;
+
+    // === 步驟 3：讓音符更新，並把「玩家有沒有按對」的資訊丟進去算 ===
+    for (auto& note : m_Notes) {
+        note->Update(currentBeat, deltaBeat, currentBlowing, m_CurrentNoteIndex);
+    }
+
+    // === 步驟 4：檢查音符是否過線，並結算清除 (C++ 的標準陣列刪除法) ===
+    for (auto it = m_Notes.begin(); it != m_Notes.end(); ) {
+        if ((*it)->IsOut(currentBeat)) {
+            // 取得成績
+            std::string score = (*it)->GetScoreResult();
+            if (score == "Perfect") m_PerfectCount++;
+            else if (score == "Good") m_GoodCount++;
+            else m_MissCount++;
+
+            // 在控制台印出結果，你也可以在這裡觸發畫面上的 UI 效果
+            std::cout << "[判定] " << score << " | Perfect: " << m_PerfectCount
+                      << " Good: " << m_GoodCount << " Miss: " << m_MissCount << std::endl;
+
+            // 整個音符消失 (移出 Vector 陣列)
+            it = m_Notes.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // === 步驟 5：繪製畫面 ===
     m_Background->Draw();
     for (auto& line : m_GuideLines) line->Draw();
     m_Indicator->Draw();

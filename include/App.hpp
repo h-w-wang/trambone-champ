@@ -14,13 +14,12 @@
 #include <memory>
 #include <vector>
 #include <string>
-
 class App {
 public:
-    enum class State { START, SELECT, UPDATE, END }; // 🚀 新增 SELECT 狀態
+    enum class State { START, SELECT, UPDATE, END };
     State GetCurrentState() const;
     void Start();
-    void SelectUpdate(); // 🚀 新增選歌畫面的更新函式
+    void SelectUpdate();
     void Update();
     void End();
 
@@ -58,6 +57,10 @@ private:
     Uint32 m_LastPlayTime = 0;
 
     std::vector<std::shared_ptr<Util::GameObject>> m_GuideLines;
+    float m_LastBeat = 0.0f;
+    int m_PerfectCount = 0;
+    int m_GoodCount = 0;
+    int m_MissCount = 0;
 };
 
 #endif
