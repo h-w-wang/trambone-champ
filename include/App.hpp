@@ -17,10 +17,10 @@
 
 class App {
 public:
-    enum class State { START, SELECT, UPDATE, END }; // 🚀 新增 SELECT 狀態
+    enum class State { START, SELECT, UPDATE, END };
     State GetCurrentState() const;
     void Start();
-    void SelectUpdate(); // 🚀 新增選歌畫面的更新函式
+    void SelectUpdate();
     void Update();
     void End();
 

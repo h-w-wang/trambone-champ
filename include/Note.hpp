@@ -10,7 +10,7 @@
 class Note {
 public:
     Note(float startYPos, float endYPos, float targetTime, float duration);
-    void Update(float currentBeat); // 改吃節拍參數
+    void Update(float currentBeat); // 改用節拍參數
 
     const std::vector<std::shared_ptr<Util::GameObject>>& GetGameObjects() const { return m_GameObjects; }
 

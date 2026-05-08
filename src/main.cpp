@@ -11,7 +11,7 @@ int main(int, char**) {
             app.Start();
             break;
 
-        case App::State::SELECT: // 🚀 處理選歌狀態
+        case App::State::SELECT:
             app.SelectUpdate();
             break;
 

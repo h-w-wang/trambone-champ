@@ -58,13 +58,12 @@ void App::Start() {
         {"song3", "第三首歌", 120.0f, 0.0f}
     };
 
-    // 🚀 關鍵修改：啟動後不載入歌曲，直接進入選歌狀態
+
     std::cout << "[SYSTEM] 進入選歌畫面，請按下數字鍵 1, 2 或 3..." << std::endl;
     m_CurrentState = State::SELECT;
 }
 
 void App::SelectUpdate() {
-    // 🚀 選歌畫面邏輯：偵測按鍵
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_1)) {
         LoadSong(0);
         m_CurrentState = State::UPDATE;
@@ -78,8 +77,7 @@ void App::SelectUpdate() {
         m_CurrentState = State::UPDATE;
     }
 
-    // 在選歌畫面時，我們不呼叫任何 Draw()，畫面會維持黑色（由 Context 每幀清空）
-    // 你也可以選擇在這裡 Draw 一張「Press 1-3 to Start」的提示圖
+    // 在選歌畫面時，畫面會維持黑色
 }
 
 void App::LoadSong(int index) {
@@ -134,7 +132,6 @@ void App::LoadSong(int index) {
 }
 
 void App::Update() {
-    // 🚀 在遊戲中按數字鍵依然可以隨時切換歌曲
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_1)) LoadSong(0);
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_2)) LoadSong(1);
     if (Util::Input::IsKeyPressed(Util::Keycode::NUM_3)) LoadSong(2);
