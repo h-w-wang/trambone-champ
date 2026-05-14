@@ -1,13 +1,22 @@
 #include "App.hpp"
 #include "Util/Transform.hpp"
+#include "Util/Text.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <cmath>
 #include <set>
 #include <algorithm>
+#include <filesystem>
+#include <utility>
 #include <SDL_mixer.h>
 #include <SDL.h>
+
+namespace fs = std::filesystem;
+
+namespace {
+    bool g_RequireInputRelease = false;
+}
 
 App::State App::GetCurrentState() const {
     return m_CurrentState;
@@ -24,11 +33,16 @@ void App::Start() {
     m_Background = std::make_shared<Util::GameObject>();
     m_Background->SetZIndex(-10.0f);
     m_Background->m_Transform.scale = {1.5f, 1.5f};
+    m_Background->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/warmup-light.png"));
+
+    m_PauseOverlay = std::make_shared<Util::GameObject>();
+    m_PauseOverlay->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png"));
+    m_PauseOverlay->SetZIndex(140.0f);
+    m_PauseOverlay->m_Transform.scale = {100.0f, 100.0f};
 
     float spacing = 40.0f;
     float bottomY = -(12 * spacing);
     std::set<int> whiteKeyIndices = {0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24};
-
     for (int i = 0; i <= 24; ++i) {
         if (whiteKeyIndices.find(i) == whiteKeyIndices.end()) continue;
         float h = bottomY + (i * spacing);
@@ -39,7 +53,6 @@ void App::Start() {
         line->m_Transform.scale = (i == 0 || i == 12 || i == 24) ? glm::vec2{20.0f, 0.04f} : glm::vec2{20.0f, 0.015f};
         m_GuideLines.push_back(line);
     }
-
     m_Indicator = std::make_shared<Util::GameObject>();
     m_Indicator->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/warmup-light.png"));
     m_Indicator->m_Transform.translation = {-300.0f, 0.0f};
@@ -52,159 +65,279 @@ void App::Start() {
     m_Pattern->SetDrawable(m_PatternIdleImage);
     m_Pattern->SetZIndex(100.0f);
 
-    m_SongList = {
-        {"song1", "稻香", 164.0f, 0.0f},
-        {"song2", "第二首歌", 164.0f, 0.0f},
-        {"song3", "第三首歌", 120.0f, 0.0f}
+    std::vector<std::string> pauseTexts = {"繼續遊戲", "重新開始", "回到選單"};
+    for (int i = 0; i < 3; ++i) {
+        auto btn = std::make_shared<Util::GameObject>();
+        btn->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 65, pauseTexts[i], SDL_Color{255, 255, 0, 255}));
+        btn->SetZIndex(200.0f);
+        m_PauseButtons.push_back(btn);
+    }
+
+    m_SongList.clear();
+    m_SongButtons.clear();
+    fs::path songDir = fs::path(RESOURCE_DIR) / "songs";
+
+    auto parseJsonFloat = [](const std::string& json, const std::string& key, float defaultVal) -> float {
+        size_t keyPos = json.find("\"" + key + "\"");
+        if (keyPos == std::string::npos) return defaultVal;
+        size_t colonPos = json.find(":", keyPos);
+        if (colonPos == std::string::npos) return defaultVal;
+        size_t numStart = json.find_first_of("-0123456789.", colonPos);
+        if (numStart == std::string::npos) return defaultVal;
+        size_t numEnd = json.find_first_not_of("-0123456789.", numStart);
+        try {
+            return std::stof(json.substr(numStart, numEnd - numStart));
+        } catch (...) {
+            return defaultVal;
+        }
     };
 
+    struct ParsedSong {
+        std::string folder;
+        std::string name;
+        float bpm;
+        float offset;
+    };
+    std::vector<ParsedSong> songData;
 
-    std::cout << "[SYSTEM] 進入選歌畫面，請按下數字鍵 1, 2 或 3..." << std::endl;
+    std::cout << "========== [開始解析歌單] ==========" << std::endl;
+    if (fs::exists(songDir) && fs::is_directory(songDir)) {
+        for (const auto& entry : fs::directory_iterator(songDir)) {
+            if (entry.is_directory()) {
+                std::string folder = entry.path().filename().string();
+                fs::path tmbPath = entry.path() / "song.tmb";
+                if (fs::exists(tmbPath)) {
+                    std::string realName = folder;
+                    float realBpm = 120.0f;
+                    float realOffset = 0.0f;
+
+                    std::ifstream tmbFile(tmbPath.string());
+                    if (tmbFile.is_open()) {
+                        std::string content((std::istreambuf_iterator<char>(tmbFile)), std::istreambuf_iterator<char>());
+
+                        // 抓歌名
+                        size_t namePos = content.find("\"name\"");
+                        if (namePos != std::string::npos) {
+                            size_t fQ = content.find("\"", content.find(":", namePos));
+                            size_t sQ = content.find("\"", fQ + 1);
+                            if (fQ != std::string::npos && sQ != std::string::npos)
+                                realName = content.substr(fQ + 1, sQ - fQ - 1);
+                        }
+
+                        realBpm = parseJsonFloat(content, "tempo", 120.0f);
+                        if (realBpm == 120.0f) realBpm = parseJsonFloat(content, "bpm", 120.0f); // 如果找不到 tempo 找 bpm
+                        realOffset = parseJsonFloat(content, "offset", 0.0f); // 某些譜面自帶 offset
+
+                        std::cout << "[成功讀取] 資料夾: " << folder << " | 歌名: " << realName << " | BPM: " << realBpm << std::endl;
+                    }
+                    songData.push_back({folder, realName, realBpm, realOffset});
+                }
+            }
+        }
+    }
+    std::cout << "====================================" << std::endl;
+
+    std::sort(songData.begin(), songData.end(), [](const auto& a, const auto& b) {
+        if (a.folder.length() != b.folder.length()) return a.folder.length() < b.folder.length();
+        return a.folder < b.folder;
+    });
+
+    for (const auto& data : songData) {
+        m_SongList.push_back({data.folder, data.name, data.bpm, data.offset});
+        auto textObj = std::make_shared<Util::GameObject>();
+        textObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 45, data.name, SDL_Color{255, 255, 255, 255}));
+        textObj->SetZIndex(50.0f);
+        m_SongButtons.push_back(textObj);
+    }
+
+    m_TotalMenuHeight = m_SongList.size() * 100.0f;
     m_CurrentState = State::SELECT;
 }
 
 void App::SelectUpdate() {
-    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_1)) {
-        LoadSong(0);
-        m_CurrentState = State::UPDATE;
-    }
-    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_2)) {
-        LoadSong(1);
-        m_CurrentState = State::UPDATE;
-    }
-    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_3)) {
-        LoadSong(2);
-        m_CurrentState = State::UPDATE;
+    m_Keyboard->Update();
+    auto mousePos = Util::Input::GetCursorPosition();
+    bool mouseClick = Util::Input::IsKeyPressed(Util::Keycode::MOUSE_LB);
+
+    if (Util::Input::IsKeyPressed(Util::Keycode::UP) || Util::Input::IsKeyPressed(Util::Keycode::W)) m_MenuScrollY -= 10.0f;
+    if (Util::Input::IsKeyPressed(Util::Keycode::DOWN) || Util::Input::IsKeyPressed(Util::Keycode::S)) m_MenuScrollY += 10.0f;
+
+    if (m_TotalMenuHeight > 0) {
+        m_MenuScrollY = fmod(m_MenuScrollY, m_TotalMenuHeight);
+        if (m_MenuScrollY < 0) m_MenuScrollY += m_TotalMenuHeight;
     }
 
-    // 在選歌畫面時，畫面會維持黑色
+    m_Background->Draw();
+    m_HoveredSongIndex = -1;
+    for (size_t i = 0; i < m_SongButtons.size(); ++i) {
+        auto& btn = m_SongButtons[i];
+        float spacing = 100.0f;
+        float baseSlotY = i * spacing - m_MenuScrollY;
+        float wrappedY = fmod(baseSlotY + 400.0f, m_TotalMenuHeight);
+        if (wrappedY < 0) wrappedY += m_TotalMenuHeight;
+        float finalY = wrappedY - 400.0f;
+        btn->m_Transform.translation = {0.0f, -finalY};
+        if (std::abs(mousePos.y - (-finalY)) < 40.0f) {
+            m_HoveredSongIndex = static_cast<int>(i);
+            btn->m_Transform.scale = {1.2f, 1.2f};
+        } else {
+            btn->m_Transform.scale = {1.0f, 1.0f};
+        }
+        btn->Draw();
+    }
+
+    if (m_HoveredSongIndex != -1 && mouseClick && !m_PrevMouseClick) {
+        LoadSong(m_HoveredSongIndex);
+        m_CurrentState = State::UPDATE;
+        g_RequireInputRelease = true;
+    }
+    m_PrevMouseClick = mouseClick;
 }
 
 void App::LoadSong(int index) {
-    if (index < 0 || index >= static_cast<int>(m_SongList.size())) return;
-
+    if (index < 0 || index >= (int)m_SongList.size()) return;
     m_CurrentSongIndex = index;
     const auto& song = m_SongList[index];
-    std::string baseDir = RESOURCE_DIR "/songs/" + song.folderName + "/";
-
+    fs::path baseDir = fs::path(RESOURCE_DIR) / "songs" / song.folderName;
     m_Notes.clear();
     Mix_HaltChannel(-1);
-
-    m_Background->SetDrawable(std::make_shared<Util::Image>(baseDir + "bg.png"));
-    m_BGM = std::make_shared<Util::BGM>(baseDir + "song.ogg");
+    Mix_HaltMusic();
+    m_Background->SetDrawable(std::make_shared<Util::Image>((baseDir / "bg.png").string()));
+    m_BGM = std::make_shared<Util::BGM>((baseDir / "song.ogg").string());
     m_BGM->SetVolume(64);
 
-    std::ifstream file(baseDir + "song.tmb");
-    if (file.is_open()) {
-        std::string jsonContent((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        size_t startPos = jsonContent.find("\"notes\":[[");
-        if (startPos != std::string::npos) {
-            startPos += 9;
-            size_t endPos = jsonContent.find("]]", startPos);
-            if (endPos != std::string::npos) {
-                std::string notesStr = jsonContent.substr(startPos, endPos - startPos + 1);
-                size_t bracketStart = 0;
-                while ((bracketStart = notesStr.find('[', bracketStart)) != std::string::npos) {
-                    size_t bracketEnd = notesStr.find(']', bracketStart);
-                    if (bracketEnd == std::string::npos) break;
-                    std::string singleNote = notesStr.substr(bracketStart + 1, bracketEnd - bracketStart - 1);
-                    if (!singleNote.empty() && singleNote[0] == '[') singleNote = singleNote.substr(1);
-                    for (char& c : singleNote) { if (c == ',') c = ' '; }
-                    std::stringstream ss(singleNote);
-                    float bStart, bDur, sY, dY, eY;
-                    if (ss >> bStart >> bDur >> sY >> dY >> eY) {
-                        m_Notes.push_back(std::make_shared<Note>(sY * 2.0f, eY * 2.0f, bStart, bDur));
-                    }
-                    bracketStart = bracketEnd + 1;
-                }
-            }
+    std::ifstream file((baseDir / "song.tmb").string());
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    size_t startPos = content.find("\"notes\":[[");
+    if (startPos != std::string::npos) {
+        startPos += 9;
+        size_t endPos = content.find("]]", startPos);
+        std::string notesStr = content.substr(startPos, endPos - startPos + 1);
+        size_t bS = 0;
+        while ((bS = notesStr.find('[', bS)) != std::string::npos) {
+            size_t bE = notesStr.find(']', bS);
+            std::string sN = notesStr.substr(bS + 1, bE - bS - 1);
+            for (char& c : sN) if (c == ',') c = ' ';
+            std::stringstream ss(sN);
+            float bStart, bDur, sY, dY, eY;
+            if (ss >> bStart >> bDur >> sY >> dY >> eY) m_Notes.push_back(std::make_shared<Note>(sY * 2.0f, eY * 2.0f, bStart, bDur));
+            bS = bE + 1;
         }
-        file.close();
     }
+    file.close();
+
+    std::cout << "[系統] 準備播放: " << song.displayName << " | 當前使用 BPM: " << song.bpm << std::endl;
 
     m_BGM->Play(-1);
     m_StartTime = SDL_GetTicks();
     m_CurrentMusicTime = 0;
-    m_WasBlowing = false;
-    m_CurrentNoteIndex = -1;
-    m_LastPlayTime = 0;
-    std::cout << "[SYSTEM] 已成功載入歌曲: " << song.displayName << std::endl;
+    m_TotalPauseDuration = 0;
+    m_IsRHolding = false;
 }
 
 void App::Update() {
-    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_1)) LoadSong(0);
-    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_2)) LoadSong(1);
-    if (Util::Input::IsKeyPressed(Util::Keycode::NUM_3)) LoadSong(2);
+    m_Keyboard->Update();
 
-    m_CurrentMusicTime = SDL_GetTicks() - m_StartTime;
-    auto cursorPos = Util::Input::GetCursorPosition();
+    if (m_Keyboard->IsEscDown()) {
+        m_CurrentState = State::PAUSE;
+        m_PauseStartTime = SDL_GetTicks();
+        Mix_PauseMusic(); Mix_Pause(-1);
+        m_PrevMouseClick = true;
+        return;
+    }
+    if (m_Keyboard->IsRKeyPressed()) {
+        if (!m_IsRHolding) { m_IsRHolding = true; m_RHoldStartTime = SDL_GetTicks(); }
+        else if (SDL_GetTicks() - m_RHoldStartTime >= 1000) { LoadSong(m_CurrentSongIndex); return; }
+    } else { m_IsRHolding = false; }
 
-    const auto& currentSong = m_SongList[m_CurrentSongIndex];
-    float adjustedTime = static_cast<float>(m_CurrentMusicTime) + currentSong.offsetMs;
-    float currentBeat = (adjustedTime / 60000.0f) * currentSong.bpm;
-
-    for (auto& note : m_Notes) {
-        note->Update(currentBeat);
+    if (m_Keyboard->IsOffsetUp()) {
+        m_GlobalOffsetMs += 10.0f;
+        std::cout << "[系統微調] 目前全域判定延遲: " << m_GlobalOffsetMs << " ms" << std::endl;
+    }
+    if (m_Keyboard->IsOffsetDown()) {
+        m_GlobalOffsetMs -= 10.0f;
+        std::cout << "[系統微調] 目前全域判定延遲: " << m_GlobalOffsetMs << " ms" << std::endl;
     }
 
+    m_CurrentMusicTime = SDL_GetTicks() - m_StartTime - m_TotalPauseDuration;
+    const auto& song = m_SongList[m_CurrentSongIndex];
+
+    float adjustedTime = static_cast<float>(m_CurrentMusicTime) + song.offsetMs + m_GlobalOffsetMs;
+    float currentBeat = (adjustedTime / 60000.0f) * song.bpm;
+
+    for (auto& note : m_Notes) note->Update(currentBeat);
+
+    auto cursorPos = Util::Input::GetCursorPosition();
     float currentY = std::clamp(cursorPos.y, -480.0f, 480.0f);
     m_Pattern->m_Transform.translation = {-300.0f, currentY};
-    m_Pattern->m_Transform.scale = {0.3f, 0.3f};
 
-    Uint32 mouseState = SDL_GetMouseState(NULL, NULL);
-    bool mouseBlowing = (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-    const Uint8* keyState = SDL_GetKeyboardState(NULL);
-    bool spaceBlowing = keyState[SDL_SCANCODE_SPACE];
-    bool currentBlowing = mouseBlowing || spaceBlowing;
+    bool blowing = m_Keyboard->IsBlowing();
+    if (g_RequireInputRelease) { if (!blowing) g_RequireInputRelease = false; blowing = false; }
 
-    float noteFloat = (currentY + 480.0f) / 40.0f;
-    int targetNoteIndex = m_CurrentNoteIndex;
-
-    if (m_CurrentNoteIndex == -1 || !m_WasBlowing) {
-        targetNoteIndex = std::clamp(static_cast<int>(std::round(noteFloat)), 0, 24);
-    } else {
-        if (std::abs(noteFloat - m_CurrentNoteIndex) > 0.6f) {
-            targetNoteIndex = std::clamp(static_cast<int>(std::round(noteFloat)), 0, 24);
-        }
-    }
-
-    Uint32 currentTime = SDL_GetTicks();
-    bool shouldPlay = false;
-
-    if (currentBlowing) {
-        if (!m_WasBlowing) {
-            shouldPlay = true;
-            m_CurrentNoteIndex = targetNoteIndex;
-        } else if (targetNoteIndex != m_CurrentNoteIndex) {
-            if (currentTime - m_LastPlayTime > 30) {
-                shouldPlay = true;
-                m_CurrentNoteIndex = targetNoteIndex;
-            }
-        }
-
-        if (shouldPlay) {
+    int targetIdx = std::clamp((int)std::round((currentY + 480.0f) / 40.0f), 0, 24);
+    if (blowing) {
+        if (!m_WasBlowing || targetIdx != m_CurrentNoteIndex) {
             Mix_HaltChannel(-1);
-            if (m_CurrentNoteIndex >= 0 && m_CurrentNoteIndex <= 24) {
-                m_TromboneNotes[m_CurrentNoteIndex]->Play(-1);
-            }
-            m_LastPlayTime = currentTime;
+            m_TromboneNotes[targetIdx]->Play(-1);
+            m_CurrentNoteIndex = targetIdx;
         }
         m_Pattern->SetDrawable(m_PatternPlayImage);
     } else {
         if (m_WasBlowing) Mix_HaltChannel(-1);
         m_Pattern->SetDrawable(m_PatternIdleImage);
     }
+    m_WasBlowing = blowing;
 
-    m_WasBlowing = currentBlowing;
     m_Background->Draw();
     for (auto& line : m_GuideLines) line->Draw();
     m_Indicator->Draw();
-    for (auto& note : m_Notes) {
-        for (auto& obj : note->GetGameObjects()) obj->Draw();
-    }
+    for (auto& note : m_Notes) for (auto& obj : note->GetGameObjects()) obj->Draw();
     m_Pattern->Draw();
 }
 
-void App::End() {
-    Mix_HaltChannel(-1);
+void App::PauseUpdate() {
+    m_Keyboard->Update();
+    auto mousePos = Util::Input::GetCursorPosition();
+    bool click = Util::Input::IsKeyPressed(Util::Keycode::MOUSE_LB);
+
+    if (m_Keyboard->IsEscDown()) {
+        m_TotalPauseDuration += (SDL_GetTicks() - m_PauseStartTime);
+        Mix_ResumeMusic(); Mix_Resume(-1);
+        m_CurrentState = State::UPDATE; return;
+    }
+
+    m_Background->Draw();
+    for (auto& line : m_GuideLines) line->Draw();
+    m_Indicator->Draw();
+    for (auto& note : m_Notes) for (auto& obj : note->GetGameObjects()) obj->Draw();
+    m_Pattern->Draw();
+
+    m_PauseOverlay->Draw();
+
+    int hovered = -1;
+    for (size_t i = 0; i < m_PauseButtons.size(); ++i) {
+        float tx = 0.0f, ty = 150.0f - (i * 150.0f);
+        m_PauseButtons[i]->m_Transform.translation = {tx, ty};
+        if (std::abs(mousePos.x - tx) < 250.0f && std::abs(mousePos.y - ty) < 60.0f) {
+            hovered = (int)i;
+            m_PauseButtons[i]->m_Transform.scale = {1.3f, 1.3f};
+        } else {
+            m_PauseButtons[i]->m_Transform.scale = {1.0f, 1.0f};
+        }
+        m_PauseButtons[i]->Draw();
+    }
+
+    if (hovered != -1 && click && !m_PrevMouseClick) {
+        if (hovered == 0) {
+            m_TotalPauseDuration += (SDL_GetTicks() - m_PauseStartTime);
+            Mix_ResumeMusic(); Mix_Resume(-1); m_CurrentState = State::UPDATE;
+        } else if (hovered == 1) {
+            Mix_ResumeMusic(); Mix_Resume(-1); LoadSong(m_CurrentSongIndex); m_CurrentState = State::UPDATE;
+        } else if (hovered == 2) {
+            Mix_ResumeMusic(); Mix_Resume(-1); Mix_HaltChannel(-1); Mix_HaltMusic(); m_CurrentState = State::SELECT;
+        }
+    }
+    m_PrevMouseClick = click;
 }
+
+void App::End() { Mix_HaltChannel(-1); Mix_HaltMusic(); }

@@ -17,11 +17,12 @@
 
 class App {
 public:
-    enum class State { START, SELECT, UPDATE, END };
+    enum class State { START, SELECT, UPDATE, PAUSE, END };
     State GetCurrentState() const;
     void Start();
     void SelectUpdate();
     void Update();
+    void PauseUpdate();
     void End();
 
 private:
@@ -45,19 +46,34 @@ private:
     std::vector<std::shared_ptr<Util::SFX>> m_TromboneNotes;
     std::shared_ptr<Util::GameObject> m_Indicator;
     std::vector<std::shared_ptr<Note>> m_Notes;
+    std::vector<std::shared_ptr<Util::GameObject>> m_GuideLines;
 
     std::shared_ptr<Util::GameObject> m_Pattern;
     std::shared_ptr<Util::Image> m_PatternIdleImage;
     std::shared_ptr<Util::Image> m_PatternPlayImage;
 
+    // UI 選單
+    std::vector<std::shared_ptr<Util::GameObject>> m_SongButtons;
+    std::vector<std::shared_ptr<Util::GameObject>> m_PauseButtons;
+    std::shared_ptr<Util::GameObject> m_PauseOverlay;
+
+    int m_HoveredSongIndex = -1;
+    bool m_PrevMouseClick = false;
+    float m_MenuScrollY = 0.0f;
+    float m_TotalMenuHeight = 0.0f;
+
+    // 狀態變數
     bool m_WasBlowing = false;
     int m_CurrentNoteIndex = -1;
-
     Uint32 m_StartTime = 0;
     Uint32 m_CurrentMusicTime = 0;
     Uint32 m_LastPlayTime = 0;
+    Uint32 m_TotalPauseDuration = 0;
+    Uint32 m_PauseStartTime = 0;
+    Uint32 m_RHoldStartTime = 0;
+    bool m_IsRHolding = false;
 
-    std::vector<std::shared_ptr<Util::GameObject>> m_GuideLines;
+    float m_GlobalOffsetMs = 0.0f;
 };
 
 #endif
