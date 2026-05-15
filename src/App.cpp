@@ -35,11 +35,6 @@ void App::Start() {
     m_Background->m_Transform.scale = {1.5f, 1.5f};
     m_Background->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/warmup-light.png"));
 
-    m_PauseOverlay = std::make_shared<Util::GameObject>();
-    m_PauseOverlay->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png"));
-    m_PauseOverlay->SetZIndex(140.0f);
-    m_PauseOverlay->m_Transform.scale = {100.0f, 100.0f};
-
     float spacing = 40.0f;
     float bottomY = -(12 * spacing);
     std::set<int> whiteKeyIndices = {0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24};
@@ -63,13 +58,18 @@ void App::Start() {
     m_PatternPlayImage = std::make_shared<Util::Image>(RESOURCE_DIR "/player-note-dot-ON.png");
     m_Pattern = std::make_shared<Util::GameObject>();
     m_Pattern->SetDrawable(m_PatternIdleImage);
-    m_Pattern->SetZIndex(100.0f);
+    m_Pattern->SetZIndex(80.0f); // 🚀 確保游標也在安全範圍內
 
+    // 🚀 暫停選單按鈕：Z-Index 設為 90 (低於極限 100，絕對能顯示！)
     std::vector<std::string> pauseTexts = {"繼續遊戲", "重新開始", "回到選單"};
     for (int i = 0; i < 3; ++i) {
         auto btn = std::make_shared<Util::GameObject>();
-        btn->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 65, pauseTexts[i], SDL_Color{255, 255, 0, 255}));
-        btn->SetZIndex(200.0f);
+        try {
+            btn->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 65, pauseTexts[i], SDL_Color{255, 255, 0, 255}));
+        } catch (...) {
+            btn->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png"));
+        }
+        btn->SetZIndex(90.0f);
         m_PauseButtons.push_back(btn);
     }
 
@@ -87,9 +87,7 @@ void App::Start() {
         size_t numEnd = json.find_first_not_of("-0123456789.", numStart);
         try {
             return std::stof(json.substr(numStart, numEnd - numStart));
-        } catch (...) {
-            return defaultVal;
-        }
+        } catch (...) { return defaultVal; }
     };
 
     struct ParsedSong {
@@ -114,8 +112,6 @@ void App::Start() {
                     std::ifstream tmbFile(tmbPath.string());
                     if (tmbFile.is_open()) {
                         std::string content((std::istreambuf_iterator<char>(tmbFile)), std::istreambuf_iterator<char>());
-
-                        // 抓歌名
                         size_t namePos = content.find("\"name\"");
                         if (namePos != std::string::npos) {
                             size_t fQ = content.find("\"", content.find(":", namePos));
@@ -123,10 +119,9 @@ void App::Start() {
                             if (fQ != std::string::npos && sQ != std::string::npos)
                                 realName = content.substr(fQ + 1, sQ - fQ - 1);
                         }
-
                         realBpm = parseJsonFloat(content, "tempo", 120.0f);
-                        if (realBpm == 120.0f) realBpm = parseJsonFloat(content, "bpm", 120.0f); // 如果找不到 tempo 找 bpm
-                        realOffset = parseJsonFloat(content, "offset", 0.0f); // 某些譜面自帶 offset
+                        if (realBpm == 120.0f) realBpm = parseJsonFloat(content, "bpm", 120.0f);
+                        realOffset = parseJsonFloat(content, "offset", 0.0f);
 
                         std::cout << "[成功讀取] 資料夾: " << folder << " | 歌名: " << realName << " | BPM: " << realBpm << std::endl;
                     }
@@ -145,7 +140,11 @@ void App::Start() {
     for (const auto& data : songData) {
         m_SongList.push_back({data.folder, data.name, data.bpm, data.offset});
         auto textObj = std::make_shared<Util::GameObject>();
-        textObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 45, data.name, SDL_Color{255, 255, 255, 255}));
+        try {
+            textObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 45, data.name, SDL_Color{255, 255, 255, 255}));
+        } catch (...) {
+            textObj->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png"));
+        }
         textObj->SetZIndex(50.0f);
         m_SongButtons.push_back(textObj);
     }
@@ -167,7 +166,7 @@ void App::SelectUpdate() {
         if (m_MenuScrollY < 0) m_MenuScrollY += m_TotalMenuHeight;
     }
 
-    m_Background->Draw();
+    // 🚀 已移除 m_Background->Draw()，讓選單變成乾淨的黑色背景！
     m_HoveredSongIndex = -1;
     for (size_t i = 0; i < m_SongButtons.size(); ++i) {
         auto& btn = m_SongButtons[i];
@@ -226,8 +225,6 @@ void App::LoadSong(int index) {
     }
     file.close();
 
-    std::cout << "[系統] 準備播放: " << song.displayName << " | 當前使用 BPM: " << song.bpm << std::endl;
-
     m_BGM->Play(-1);
     m_StartTime = SDL_GetTicks();
     m_CurrentMusicTime = 0;
@@ -252,11 +249,11 @@ void App::Update() {
 
     if (m_Keyboard->IsOffsetUp()) {
         m_GlobalOffsetMs += 10.0f;
-        std::cout << "[系統微調] 目前全域判定延遲: " << m_GlobalOffsetMs << " ms" << std::endl;
+        std::cout << "[系統微調] 判定延遲: " << m_GlobalOffsetMs << " ms" << std::endl;
     }
     if (m_Keyboard->IsOffsetDown()) {
         m_GlobalOffsetMs -= 10.0f;
-        std::cout << "[系統微調] 目前全域判定延遲: " << m_GlobalOffsetMs << " ms" << std::endl;
+        std::cout << "[系統微調] 判定延遲: " << m_GlobalOffsetMs << " ms" << std::endl;
     }
 
     m_CurrentMusicTime = SDL_GetTicks() - m_StartTime - m_TotalPauseDuration;
@@ -300,41 +297,49 @@ void App::PauseUpdate() {
     auto mousePos = Util::Input::GetCursorPosition();
     bool click = Util::Input::IsKeyPressed(Util::Keycode::MOUSE_LB);
 
+    // ESC 恢復遊戲
     if (m_Keyboard->IsEscDown()) {
         m_TotalPauseDuration += (SDL_GetTicks() - m_PauseStartTime);
         Mix_ResumeMusic(); Mix_Resume(-1);
-        m_CurrentState = State::UPDATE; return;
+        m_CurrentState = State::UPDATE;
+        return;
     }
 
+    // 畫出凍結的遊戲畫面
     m_Background->Draw();
     for (auto& line : m_GuideLines) line->Draw();
     m_Indicator->Draw();
     for (auto& note : m_Notes) for (auto& obj : note->GetGameObjects()) obj->Draw();
     m_Pattern->Draw();
 
-    m_PauseOverlay->Draw();
-
+    // 🚀 畫出 UI 按鈕 (因為放在最後面且 Z-Index=90，它絕對會顯示在最上層)
     int hovered = -1;
     for (size_t i = 0; i < m_PauseButtons.size(); ++i) {
-        float tx = 0.0f, ty = 150.0f - (i * 150.0f);
+        float tx = 0.0f, ty = 120.0f - (i * 120.0f); // 置中，拉開間距
         m_PauseButtons[i]->m_Transform.translation = {tx, ty};
-        if (std::abs(mousePos.x - tx) < 250.0f && std::abs(mousePos.y - ty) < 60.0f) {
+
+        if (std::abs(mousePos.x - tx) < 200.0f && std::abs(mousePos.y - ty) < 50.0f) {
             hovered = (int)i;
-            m_PauseButtons[i]->m_Transform.scale = {1.3f, 1.3f};
+            m_PauseButtons[i]->m_Transform.scale = {1.2f, 1.2f};
         } else {
             m_PauseButtons[i]->m_Transform.scale = {1.0f, 1.0f};
         }
         m_PauseButtons[i]->Draw();
     }
 
+    // 處理點擊邏輯
     if (hovered != -1 && click && !m_PrevMouseClick) {
-        if (hovered == 0) {
+        if (hovered == 0) { // 繼續遊戲
             m_TotalPauseDuration += (SDL_GetTicks() - m_PauseStartTime);
-            Mix_ResumeMusic(); Mix_Resume(-1); m_CurrentState = State::UPDATE;
-        } else if (hovered == 1) {
-            Mix_ResumeMusic(); Mix_Resume(-1); LoadSong(m_CurrentSongIndex); m_CurrentState = State::UPDATE;
-        } else if (hovered == 2) {
-            Mix_ResumeMusic(); Mix_Resume(-1); Mix_HaltChannel(-1); Mix_HaltMusic(); m_CurrentState = State::SELECT;
+            Mix_ResumeMusic(); Mix_Resume(-1);
+            m_CurrentState = State::UPDATE;
+        } else if (hovered == 1) { // 重新開始
+            Mix_ResumeMusic(); Mix_Resume(-1);
+            LoadSong(m_CurrentSongIndex);
+            m_CurrentState = State::UPDATE;
+        } else if (hovered == 2) { // 回到選單
+            Mix_ResumeMusic(); Mix_Resume(-1); Mix_HaltChannel(-1); Mix_HaltMusic();
+            m_CurrentState = State::SELECT;
         }
     }
     m_PrevMouseClick = click;

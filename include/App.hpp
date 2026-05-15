@@ -55,7 +55,6 @@ private:
     // UI 選單
     std::vector<std::shared_ptr<Util::GameObject>> m_SongButtons;
     std::vector<std::shared_ptr<Util::GameObject>> m_PauseButtons;
-    std::shared_ptr<Util::GameObject> m_PauseOverlay;
 
     int m_HoveredSongIndex = -1;
     bool m_PrevMouseClick = false;
