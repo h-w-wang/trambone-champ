@@ -201,7 +201,24 @@ void App::LoadSong(int index) {
     m_Notes.clear();
     Mix_HaltChannel(-1);
     Mix_HaltMusic();
-    m_Background->SetDrawable(std::make_shared<Util::Image>((baseDir / "bg.png").string()));
+
+    // 🚀 自動偵測背景圖片格式 (支援 png, jpg, jpeg)
+    std::string finalBgPath = "";
+    if (fs::exists(baseDir / "bg.png")) {
+        finalBgPath = (baseDir / "bg.png").string();
+    } else if (fs::exists(baseDir / "bg.jpg")) {
+        finalBgPath = (baseDir / "bg.jpg").string();
+    } else if (fs::exists(baseDir / "bg.jpeg")) {
+        finalBgPath = (baseDir / "bg.jpeg").string();
+    }
+
+    // 🚀 如果有找到背景圖就載入，沒找到就給個預設的點點圖防崩潰
+    if (!finalBgPath.empty()) {
+        m_Background->SetDrawable(std::make_shared<Util::Image>(finalBgPath));
+    } else {
+        m_Background->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png"));
+    }
+
     m_BGM = std::make_shared<Util::BGM>((baseDir / "song.ogg").string());
     m_BGM->SetVolume(64);
 
