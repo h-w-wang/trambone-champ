@@ -2,32 +2,40 @@
 #include <cmath>
 #include <algorithm>
 
-static std::shared_ptr<Util::Image> s_NoteDotImage = nullptr;
-static std::shared_ptr<Util::Image> s_NoteLineImage = nullptr;
+// 🚀 關鍵修復：改用 weak_ptr，防止遊戲關閉時 OpenGL 引擎崩潰
+static std::weak_ptr<Util::Image> s_NoteDotImage;
+static std::weak_ptr<Util::Image> s_NoteLineImage;
 
 Note::Note(float startYPos, float endYPos, float targetTime, float duration)
     : m_TargetTime(targetTime), m_startYPos(startYPos), m_endYPos(endYPos), m_Duration(duration) {
 
-    if (!s_NoteDotImage) {
-        s_NoteDotImage = std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png");
-        s_NoteLineImage = std::make_shared<Util::Image>(RESOURCE_DIR "/warmup-light-rotated.png");
+    auto dotImg = s_NoteDotImage.lock();
+    if (!dotImg) {
+        dotImg = std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png");
+        s_NoteDotImage = dotImg;
+    }
+
+    auto lineImg = s_NoteLineImage.lock();
+    if (!lineImg) {
+        lineImg = std::make_shared<Util::Image>(RESOURCE_DIR "/warmup-light-rotated.png");
+        s_NoteLineImage = lineImg;
     }
 
     // 1. 音符頭
     auto startDot = std::make_shared<Util::GameObject>();
-    startDot->SetDrawable(s_NoteDotImage); // 大家都共用同一張圖！
+    startDot->SetDrawable(dotImg);
     startDot->SetZIndex(5.1f);
     m_GameObjects.push_back(startDot);
 
     // 2. 音符尾
     auto endDot = std::make_shared<Util::GameObject>();
-    endDot->SetDrawable(s_NoteDotImage);
+    endDot->SetDrawable(dotImg);
     endDot->SetZIndex(5.1f);
     m_GameObjects.push_back(endDot);
 
     // 3. 連接線段
     auto line = std::make_shared<Util::GameObject>();
-    line->SetDrawable(s_NoteLineImage);
+    line->SetDrawable(lineImg);
     line->SetZIndex(5.0f);
     m_GameObjects.push_back(line);
 }

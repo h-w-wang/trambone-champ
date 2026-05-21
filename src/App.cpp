@@ -16,6 +16,11 @@ namespace fs = std::filesystem;
 
 namespace {
     bool g_RequireInputRelease = false;
+
+    // 🚀 視覺化變數：改為填滿效果
+    std::shared_ptr<Util::GameObject> s_RestartText = nullptr;
+    std::shared_ptr<Util::GameObject> s_RestartFill = nullptr;
+    std::shared_ptr<Util::GameObject> s_RestartBG = nullptr;
 }
 
 App::State App::GetCurrentState() const {
@@ -58,9 +63,8 @@ void App::Start() {
     m_PatternPlayImage = std::make_shared<Util::Image>(RESOURCE_DIR "/player-note-dot-ON.png");
     m_Pattern = std::make_shared<Util::GameObject>();
     m_Pattern->SetDrawable(m_PatternIdleImage);
-    m_Pattern->SetZIndex(80.0f); // 🚀 確保游標也在安全範圍內
+    m_Pattern->SetZIndex(80.0f);
 
-    // 🚀 暫停選單按鈕：Z-Index 設為 90 (低於極限 100，絕對能顯示！)
     std::vector<std::string> pauseTexts = {"繼續遊戲", "重新開始", "回到選單"};
     for (int i = 0; i < 3; ++i) {
         auto btn = std::make_shared<Util::GameObject>();
@@ -98,7 +102,6 @@ void App::Start() {
     };
     std::vector<ParsedSong> songData;
 
-    std::cout << "========== [開始解析歌單] ==========" << std::endl;
     if (fs::exists(songDir) && fs::is_directory(songDir)) {
         for (const auto& entry : fs::directory_iterator(songDir)) {
             if (entry.is_directory()) {
@@ -108,7 +111,6 @@ void App::Start() {
                     std::string realName = folder;
                     float realBpm = 120.0f;
                     float realOffset = 0.0f;
-
                     std::ifstream tmbFile(tmbPath.string());
                     if (tmbFile.is_open()) {
                         std::string content((std::istreambuf_iterator<char>(tmbFile)), std::istreambuf_iterator<char>());
@@ -122,15 +124,12 @@ void App::Start() {
                         realBpm = parseJsonFloat(content, "tempo", 120.0f);
                         if (realBpm == 120.0f) realBpm = parseJsonFloat(content, "bpm", 120.0f);
                         realOffset = parseJsonFloat(content, "offset", 0.0f);
-
-                        std::cout << "[成功讀取] 資料夾: " << folder << " | 歌名: " << realName << " | BPM: " << realBpm << std::endl;
                     }
                     songData.push_back({folder, realName, realBpm, realOffset});
                 }
             }
         }
     }
-    std::cout << "====================================" << std::endl;
 
     std::sort(songData.begin(), songData.end(), [](const auto& a, const auto& b) {
         if (a.folder.length() != b.folder.length()) return a.folder.length() < b.folder.length();
@@ -151,22 +150,32 @@ void App::Start() {
 
     m_TotalMenuHeight = m_SongList.size() * 100.0f;
     m_CurrentState = State::SELECT;
+    m_LastFrameTime = SDL_GetTicks();
 }
 
 void App::SelectUpdate() {
+    Uint32 currentTicks = SDL_GetTicks();
+    float dt = (currentTicks - m_LastFrameTime) / 1000.0f;
+    if (dt > 0.1f) dt = 0.1f;
+    m_LastFrameTime = currentTicks;
+
     m_Keyboard->Update();
     auto mousePos = Util::Input::GetCursorPosition();
     bool mouseClick = Util::Input::IsKeyPressed(Util::Keycode::MOUSE_LB);
 
-    if (Util::Input::IsKeyPressed(Util::Keycode::UP) || Util::Input::IsKeyPressed(Util::Keycode::W)) m_MenuScrollY -= 10.0f;
-    if (Util::Input::IsKeyPressed(Util::Keycode::DOWN) || Util::Input::IsKeyPressed(Util::Keycode::S)) m_MenuScrollY += 10.0f;
+    float scrollSpeed = 1500.0f * dt;
+    if (Util::Input::IsKeyPressed(Util::Keycode::UP) || Util::Input::IsKeyPressed(Util::Keycode::W)) m_TargetScrollY -= scrollSpeed;
+    if (Util::Input::IsKeyPressed(Util::Keycode::DOWN) || Util::Input::IsKeyPressed(Util::Keycode::S)) m_TargetScrollY += scrollSpeed;
+
+    m_MenuScrollY += (m_TargetScrollY - m_MenuScrollY) * 12.0f * dt;
 
     if (m_TotalMenuHeight > 0) {
         m_MenuScrollY = fmod(m_MenuScrollY, m_TotalMenuHeight);
         if (m_MenuScrollY < 0) m_MenuScrollY += m_TotalMenuHeight;
     }
 
-    // 🚀 已移除 m_Background->Draw()，讓選單變成乾淨的黑色背景！
+    // 🚀 已將 m_Background->Draw() 移除，選單背景現在會是全黑的！
+
     m_HoveredSongIndex = -1;
     for (size_t i = 0; i < m_SongButtons.size(); ++i) {
         auto& btn = m_SongButtons[i];
@@ -175,6 +184,9 @@ void App::SelectUpdate() {
         float wrappedY = fmod(baseSlotY + 400.0f, m_TotalMenuHeight);
         if (wrappedY < 0) wrappedY += m_TotalMenuHeight;
         float finalY = wrappedY - 400.0f;
+
+        if (finalY < -500.0f || finalY > 500.0f) continue;
+
         btn->m_Transform.translation = {0.0f, -finalY};
         if (std::abs(mousePos.y - (-finalY)) < 40.0f) {
             m_HoveredSongIndex = static_cast<int>(i);
@@ -202,22 +214,13 @@ void App::LoadSong(int index) {
     Mix_HaltChannel(-1);
     Mix_HaltMusic();
 
-    // 🚀 自動偵測背景圖片格式 (支援 png, jpg, jpeg)
     std::string finalBgPath = "";
-    if (fs::exists(baseDir / "bg.png")) {
-        finalBgPath = (baseDir / "bg.png").string();
-    } else if (fs::exists(baseDir / "bg.jpg")) {
-        finalBgPath = (baseDir / "bg.jpg").string();
-    } else if (fs::exists(baseDir / "bg.jpeg")) {
-        finalBgPath = (baseDir / "bg.jpeg").string();
-    }
+    if (fs::exists(baseDir / "bg.png")) finalBgPath = (baseDir / "bg.png").string();
+    else if (fs::exists(baseDir / "bg.jpg")) finalBgPath = (baseDir / "bg.jpg").string();
+    else if (fs::exists(baseDir / "bg.jpeg")) finalBgPath = (baseDir / "bg.jpeg").string();
 
-    // 🚀 如果有找到背景圖就載入，沒找到就給個預設的點點圖防崩潰
-    if (!finalBgPath.empty()) {
-        m_Background->SetDrawable(std::make_shared<Util::Image>(finalBgPath));
-    } else {
-        m_Background->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png"));
-    }
+    if (!finalBgPath.empty()) m_Background->SetDrawable(std::make_shared<Util::Image>(finalBgPath));
+    else m_Background->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png"));
 
     m_BGM = std::make_shared<Util::BGM>((baseDir / "song.ogg").string());
     m_BGM->SetVolume(64);
@@ -247,6 +250,7 @@ void App::LoadSong(int index) {
     m_CurrentMusicTime = 0;
     m_TotalPauseDuration = 0;
     m_IsRHolding = false;
+    m_RequireRRelease = false;
 }
 
 void App::Update() {
@@ -255,27 +259,31 @@ void App::Update() {
     if (m_Keyboard->IsEscDown()) {
         m_CurrentState = State::PAUSE;
         m_PauseStartTime = SDL_GetTicks();
-        Mix_PauseMusic(); Mix_Pause(-1);
+        Mix_PauseMusic();
+        Mix_HaltChannel(-1);
+        m_WasBlowing = false;
         m_PrevMouseClick = true;
         return;
     }
-    if (m_Keyboard->IsRKeyPressed()) {
-        if (!m_IsRHolding) { m_IsRHolding = true; m_RHoldStartTime = SDL_GetTicks(); }
-        else if (SDL_GetTicks() - m_RHoldStartTime >= 1000) { LoadSong(m_CurrentSongIndex); return; }
-    } else { m_IsRHolding = false; }
 
-    if (m_Keyboard->IsOffsetUp()) {
-        m_GlobalOffsetMs += 10.0f;
-        std::cout << "[系統微調] 判定延遲: " << m_GlobalOffsetMs << " ms" << std::endl;
+    // 🚀 防連觸機制：必須放開 R 鍵才能觸發下一次
+    if (m_Keyboard->IsRKeyPressed()) {
+        if (!m_RequireRRelease) {
+            if (!m_IsRHolding) {
+                m_IsRHolding = true;
+                m_RHoldStartTime = SDL_GetTicks();
+            }
+        }
+    } else {
+        m_IsRHolding = false;
+        m_RequireRRelease = false; // 放開按鍵，解鎖
     }
-    if (m_Keyboard->IsOffsetDown()) {
-        m_GlobalOffsetMs -= 10.0f;
-        std::cout << "[系統微調] 判定延遲: " << m_GlobalOffsetMs << " ms" << std::endl;
-    }
+
+    if (m_Keyboard->IsOffsetUp()) m_GlobalOffsetMs += 10.0f;
+    if (m_Keyboard->IsOffsetDown()) m_GlobalOffsetMs -= 10.0f;
 
     m_CurrentMusicTime = SDL_GetTicks() - m_StartTime - m_TotalPauseDuration;
     const auto& song = m_SongList[m_CurrentSongIndex];
-
     float adjustedTime = static_cast<float>(m_CurrentMusicTime) + song.offsetMs + m_GlobalOffsetMs;
     float currentBeat = (adjustedTime / 60000.0f) * song.bpm;
 
@@ -302,11 +310,67 @@ void App::Update() {
     }
     m_WasBlowing = blowing;
 
+    // 畫出背景與軌道
     m_Background->Draw();
     for (auto& line : m_GuideLines) line->Draw();
     m_Indicator->Draw();
-    for (auto& note : m_Notes) for (auto& obj : note->GetGameObjects()) obj->Draw();
+
+    // 畫出範圍內的音符
+    for (auto& note : m_Notes) {
+        auto& objs = note->GetGameObjects();
+        if (objs.empty()) continue;
+        float headX = objs[0]->m_Transform.translation.x;
+        float endX = objs[1]->m_Transform.translation.x;
+        if (endX < -1000.0f || headX > 1000.0f) continue;
+        for (auto& obj : objs) obj->Draw();
+    }
     m_Pattern->Draw();
+
+    // 🚀 畫出由內向外覆蓋的同心圓 (取代扇形)
+    if (m_IsRHolding) {
+        float progress = std::clamp((SDL_GetTicks() - m_RHoldStartTime) / 1000.0f, 0.0f, 1.0f);
+
+        if (!s_RestartText) {
+            s_RestartText = std::make_shared<Util::GameObject>();
+            s_RestartText->SetZIndex(99.0f);
+
+            s_RestartFill = std::make_shared<Util::GameObject>();
+            s_RestartFill->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/player-note-dot-ON.png")); // 亮色圓圈
+            s_RestartFill->SetZIndex(98.0f);
+
+            s_RestartBG = std::make_shared<Util::GameObject>();
+            s_RestartBG->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png")); // 暗色圓圈
+            s_RestartBG->SetZIndex(97.0f);
+        }
+
+        int percent = static_cast<int>(progress * 100);
+        try {
+            s_RestartText->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 40, "RESTARTING... " + std::to_string(percent) + "%", SDL_Color{255, 255, 0, 255}));
+        } catch (...) {}
+
+        s_RestartText->m_Transform.translation = {0.0f, -120.0f};
+
+        // 底圖圓圈大小固定
+        s_RestartBG->m_Transform.translation = {0.0f, 0.0f};
+        s_RestartBG->m_Transform.scale = {2.0f, 2.0f};
+
+        // 🚀 填滿圓圈隨時間變大，完美覆蓋底圖
+        s_RestartFill->m_Transform.translation = {0.0f, 0.0f};
+        s_RestartFill->m_Transform.scale = {2.0f * progress, 2.0f * progress};
+
+        s_RestartBG->Draw();
+        s_RestartFill->Draw();
+        s_RestartText->Draw();
+
+        // 🚀 滿 100% 執行重來，並立刻鎖定，強迫玩家放開按鍵
+        if (progress >= 1.0f) {
+            LoadSong(m_CurrentSongIndex);
+            g_RequireInputRelease = true;
+            m_RequireRRelease = true; // 上鎖
+            m_IsRHolding = false;
+            return;
+        }
+    }
 }
 
 void App::PauseUpdate() {
@@ -314,49 +378,107 @@ void App::PauseUpdate() {
     auto mousePos = Util::Input::GetCursorPosition();
     bool click = Util::Input::IsKeyPressed(Util::Keycode::MOUSE_LB);
 
-    // ESC 恢復遊戲
     if (m_Keyboard->IsEscDown()) {
         m_TotalPauseDuration += (SDL_GetTicks() - m_PauseStartTime);
-        Mix_ResumeMusic(); Mix_Resume(-1);
+        Mix_ResumeMusic();
         m_CurrentState = State::UPDATE;
+        g_RequireInputRelease = true;
+        m_LastFrameTime = SDL_GetTicks();
         return;
     }
 
-    // 畫出凍結的遊戲畫面
+    if (m_Keyboard->IsRKeyPressed()) {
+        if (!m_RequireRRelease) {
+            if (!m_IsRHolding) {
+                m_IsRHolding = true;
+                m_RHoldStartTime = SDL_GetTicks();
+            }
+        }
+    } else {
+        m_IsRHolding = false;
+        m_RequireRRelease = false;
+    }
+
     m_Background->Draw();
     for (auto& line : m_GuideLines) line->Draw();
     m_Indicator->Draw();
-    for (auto& note : m_Notes) for (auto& obj : note->GetGameObjects()) obj->Draw();
+    for (auto& note : m_Notes) {
+        auto& objs = note->GetGameObjects();
+        if (objs.empty()) continue;
+        float headX = objs[0]->m_Transform.translation.x;
+        float endX = objs[1]->m_Transform.translation.x;
+        if (endX < -1000.0f || headX > 1000.0f) continue;
+        for (auto& obj : objs) obj->Draw();
+    }
     m_Pattern->Draw();
 
-    // 🚀 畫出 UI 按鈕 (因為放在最後面且 Z-Index=90，它絕對會顯示在最上層)
     int hovered = -1;
     for (size_t i = 0; i < m_PauseButtons.size(); ++i) {
-        float tx = 0.0f, ty = 120.0f - (i * 120.0f); // 置中，拉開間距
+        float tx = 0.0f, ty = 150.0f - (i * 150.0f);
         m_PauseButtons[i]->m_Transform.translation = {tx, ty};
-
-        if (std::abs(mousePos.x - tx) < 200.0f && std::abs(mousePos.y - ty) < 50.0f) {
-            hovered = (int)i;
-            m_PauseButtons[i]->m_Transform.scale = {1.2f, 1.2f};
-        } else {
-            m_PauseButtons[i]->m_Transform.scale = {1.0f, 1.0f};
-        }
+        if (std::abs(mousePos.x - tx) < 250.0f && std::abs(mousePos.y - ty) < 60.0f) {
+            hovered = (int)i; m_PauseButtons[i]->m_Transform.scale = {1.3f, 1.3f};
+        } else { m_PauseButtons[i]->m_Transform.scale = {1.0f, 1.0f}; }
         m_PauseButtons[i]->Draw();
     }
 
-    // 處理點擊邏輯
-    if (hovered != -1 && click && !m_PrevMouseClick) {
-        if (hovered == 0) { // 繼續遊戲
-            m_TotalPauseDuration += (SDL_GetTicks() - m_PauseStartTime);
-            Mix_ResumeMusic(); Mix_Resume(-1);
-            m_CurrentState = State::UPDATE;
-        } else if (hovered == 1) { // 重新開始
-            Mix_ResumeMusic(); Mix_Resume(-1);
+    if (m_IsRHolding) {
+        float progress = std::clamp((SDL_GetTicks() - m_RHoldStartTime) / 1000.0f, 0.0f, 1.0f);
+        if (!s_RestartText) {
+            s_RestartText = std::make_shared<Util::GameObject>();
+            s_RestartText->SetZIndex(99.0f);
+            s_RestartFill = std::make_shared<Util::GameObject>();
+            s_RestartFill->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/player-note-dot-ON.png"));
+            s_RestartFill->SetZIndex(98.0f);
+            s_RestartBG = std::make_shared<Util::GameObject>();
+            s_RestartBG->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png"));
+            s_RestartBG->SetZIndex(97.0f);
+        }
+        int percent = static_cast<int>(progress * 100);
+        try {
+            s_RestartText->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 40, "RESTARTING... " + std::to_string(percent) + "%", SDL_Color{255, 255, 0, 255}));
+        } catch(...) {}
+
+        s_RestartText->m_Transform.translation = {0.0f, -120.0f};
+
+        s_RestartBG->m_Transform.translation = {0.0f, 0.0f};
+        s_RestartBG->m_Transform.scale = {2.0f, 2.0f};
+
+        s_RestartFill->m_Transform.translation = {0.0f, 0.0f};
+        s_RestartFill->m_Transform.scale = {2.0f * progress, 2.0f * progress};
+
+        s_RestartBG->Draw();
+        s_RestartFill->Draw();
+        s_RestartText->Draw();
+
+        if (progress >= 1.0f) {
+            Mix_ResumeMusic();
             LoadSong(m_CurrentSongIndex);
             m_CurrentState = State::UPDATE;
-        } else if (hovered == 2) { // 回到選單
-            Mix_ResumeMusic(); Mix_Resume(-1); Mix_HaltChannel(-1); Mix_HaltMusic();
+            g_RequireInputRelease = true;
+            m_RequireRRelease = true;
+            m_IsRHolding = false;
+            return;
+        }
+    }
+
+    if (hovered != -1 && click && !m_PrevMouseClick) {
+        if (hovered == 0) {
+            m_TotalPauseDuration += (SDL_GetTicks() - m_PauseStartTime);
+            Mix_ResumeMusic();
+            m_CurrentState = State::UPDATE;
+            g_RequireInputRelease = true;
+            m_LastFrameTime = SDL_GetTicks();
+        } else if (hovered == 1) {
+            Mix_ResumeMusic();
+            LoadSong(m_CurrentSongIndex);
+            m_CurrentState = State::UPDATE;
+            g_RequireInputRelease = true;
+        } else if (hovered == 2) {
+            Mix_ResumeMusic();
+            Mix_HaltChannel(-1); Mix_HaltMusic();
             m_CurrentState = State::SELECT;
+            g_RequireInputRelease = true;
         }
     }
     m_PrevMouseClick = click;
