@@ -2,7 +2,6 @@
 #include <cmath>
 #include <algorithm>
 
-// 🚀 關鍵修復：改用 weak_ptr，防止遊戲關閉時 OpenGL 引擎崩潰
 static std::weak_ptr<Util::Image> s_NoteDotImage;
 static std::weak_ptr<Util::Image> s_NoteLineImage;
 
@@ -21,35 +20,33 @@ Note::Note(float startYPos, float endYPos, float targetTime, float duration)
         s_NoteLineImage = lineImg;
     }
 
-    // 1. 音符頭
     auto startDot = std::make_shared<Util::GameObject>();
     startDot->SetDrawable(dotImg);
     startDot->SetZIndex(5.1f);
     m_GameObjects.push_back(startDot);
 
-    // 2. 音符尾
     auto endDot = std::make_shared<Util::GameObject>();
     endDot->SetDrawable(dotImg);
     endDot->SetZIndex(5.1f);
     m_GameObjects.push_back(endDot);
 
-    // 3. 連接線段
     auto line = std::make_shared<Util::GameObject>();
     line->SetDrawable(lineImg);
     line->SetZIndex(5.0f);
     m_GameObjects.push_back(line);
 }
 
-void Note::Update(float currentBeat) {
+void Note::Update(float currentBeat, float deltaBeat, bool isBlowing, int currentPitch) {
     float speed = 150.0f;
-    float headX = -300.0f + (m_TargetTime - currentBeat) * speed;
+    // 🚀 保持我們調好的 -350.0f 判定線
+    float headX = -350.0f + (m_TargetTime - currentBeat) * speed;
     float endX = headX + (m_Duration * speed);
 
-    // 🚀 1. 點點放大：將 scale 從 0.3f 調整為 0.5f (根據你的實際點點圖大小可微調)
     m_GameObjects[0]->m_Transform.translation = {headX, m_startYPos};
     m_GameObjects[1]->m_Transform.translation = {endX, m_endYPos};
-    m_GameObjects[0]->m_Transform.scale = {0.65f, 0.65f};
-    m_GameObjects[1]->m_Transform.scale = {0.65f, 0.65f};
+
+    m_GameObjects[0]->m_Transform.scale = {0.5f, 0.5f};
+    m_GameObjects[1]->m_Transform.scale = {0.5f, 0.5f};
 
     float deltaX = endX - headX;
     float deltaY = m_endYPos - m_startYPos;
@@ -61,11 +58,32 @@ void Note::Update(float currentBeat) {
 
     float baseWidth = 256.0f;
     float scaleX = std::max(0.01f, hypotenuse / baseWidth);
+    m_GameObjects[2]->m_Transform.scale = {scaleX, 0.5f};
 
-    // 🚀 2. 線條變粗：將 y 軸的 scale 從 0.2f 調整為 0.5f
-    m_GameObjects[2]->m_Transform.scale = {scaleX, 0.8f};
+    // 🚀 核心判定邏輯
+    if (currentBeat >= m_TargetTime && currentBeat <= m_TargetTime + m_Duration) {
+        float progress = std::clamp((currentBeat - m_TargetTime) / m_Duration, 0.0f, 1.0f);
+        float currentExpectedY = m_startYPos + (m_endYPos - m_startYPos) * progress;
+
+        // 🚀 使用我們調整過的 25.0f 間距與 300.0f 畫面高度來計算預期音階
+        int expectedPitch = std::clamp(static_cast<int>(std::round((currentExpectedY + 300.0f) / 25.0f)), 0, 24);
+
+        if (isBlowing && currentPitch == expectedPitch) {
+            m_HitBeatAmount += deltaBeat;
+        }
+    }
 }
 
-bool Note::IsOut() const {
-    return m_GameObjects[1]->m_Transform.translation.x < -1000.0f;
+bool Note::IsOut(float currentBeat) const {
+    return currentBeat > (m_TargetTime + m_Duration);
+}
+
+std::string Note::GetScoreResult() const {
+    if (m_Duration <= 0) return "Miss";
+
+    float hitPercent = m_HitBeatAmount / m_Duration;
+
+    if (hitPercent >= 0.8f) return "Perfect";
+    if (hitPercent >= 0.5f) return "Good";
+    return "Miss";
 }

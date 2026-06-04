@@ -79,6 +79,12 @@ private:
     bool m_RequireRRelease = false;
 
     float m_GlobalOffsetMs = 0.0f;
+
+    // 在 App.hpp 補上這四行計數器
+    float m_LastBeat = 0.0f;
+    int m_PerfectCount = 0;
+    int m_GoodCount = 0;
+    int m_MissCount = 0;
 };
 
 #endif
