@@ -45,10 +45,11 @@ void Note::Update(float currentBeat) {
     float headX = -300.0f + (m_TargetTime - currentBeat) * speed;
     float endX = headX + (m_Duration * speed);
 
+    // 🚀 1. 點點放大：將 scale 從 0.3f 調整為 0.5f (根據你的實際點點圖大小可微調)
     m_GameObjects[0]->m_Transform.translation = {headX, m_startYPos};
     m_GameObjects[1]->m_Transform.translation = {endX, m_endYPos};
-    m_GameObjects[0]->m_Transform.scale = {0.3f, 0.3f};
-    m_GameObjects[1]->m_Transform.scale = {0.3f, 0.3f};
+    m_GameObjects[0]->m_Transform.scale = {0.65f, 0.65f};
+    m_GameObjects[1]->m_Transform.scale = {0.65f, 0.65f};
 
     float deltaX = endX - headX;
     float deltaY = m_endYPos - m_startYPos;
@@ -60,7 +61,9 @@ void Note::Update(float currentBeat) {
 
     float baseWidth = 256.0f;
     float scaleX = std::max(0.01f, hypotenuse / baseWidth);
-    m_GameObjects[2]->m_Transform.scale = {scaleX, 0.2f};
+
+    // 🚀 2. 線條變粗：將 y 軸的 scale 從 0.2f 調整為 0.5f
+    m_GameObjects[2]->m_Transform.scale = {scaleX, 0.8f};
 }
 
 bool Note::IsOut() const {
