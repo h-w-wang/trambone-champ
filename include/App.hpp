@@ -17,12 +17,13 @@
 
 class App {
 public:
+    // 🚀 補回 PAUSE 狀態
     enum class State { START, SELECT, UPDATE, PAUSE, END };
     State GetCurrentState() const;
     void Start();
     void SelectUpdate();
     void Update();
-    void PauseUpdate();
+    void PauseUpdate(); // 🚀 補回暫停函式
     void End();
 
 private:
@@ -65,13 +66,11 @@ private:
     int m_CurrentNoteIndex = -1;
     Uint32 m_StartTime = 0;
     Uint32 m_CurrentMusicTime = 0;
-    Uint32 m_LastPlayTime = 0;
+    Uint32 m_LastFrameTime = 0;
     Uint32 m_TotalPauseDuration = 0;
     Uint32 m_PauseStartTime = 0;
     Uint32 m_RHoldStartTime = 0;
-    Uint32 m_LastFrameTime = 0;
 
-    // 🚀 新增：倒數計時控制變數
     bool m_IsCountingDown = false;
     Uint32 m_CountdownStartTime = 0;
 
@@ -80,11 +79,19 @@ private:
 
     float m_GlobalOffsetMs = 0.0f;
 
-    // 在 App.hpp 補上這四行計數器
+    // 計分與判定系統
     float m_LastBeat = 0.0f;
     int m_PerfectCount = 0;
     int m_GoodCount = 0;
     int m_MissCount = 0;
+    int m_Combo = 0;
+    int m_MaxCombo = 0;
+
+    // 判定與 Combo 畫面 UI 物件
+    std::shared_ptr<Util::GameObject> m_ScoreTextObj;
+    std::shared_ptr<Util::GameObject> m_ComboTextObj;
+    std::string m_LastScoreString = "";
+    int m_LastCombo = -1;
 };
 
 #endif

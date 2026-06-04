@@ -19,7 +19,7 @@ int main(int, char**) {
                 app.Update();
                 break;
 
-            case App::State::PAUSE:
+            case App::State::PAUSE: // 🚀 處理暫停狀態
                 app.PauseUpdate();
                 break;
 
