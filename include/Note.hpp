@@ -10,30 +10,33 @@
 
 class Note {
 public:
-    Note(float startYPos, float endYPos, float targetTime, float duration);
+    // 定義節點結構
+    struct Waypoint {
+        float beat;
+        float y;
+    };
 
-    void Update(float currentBeat, float deltaBeat, bool isBlowing, int currentPitch);
+    Note(const std::vector<Waypoint>& waypoints);
+
+    void Update(float currentBeat, float deltaBeat, bool isBlowing, float currentY);
     const std::vector<std::shared_ptr<Util::GameObject>>& GetGameObjects() const { return m_GameObjects; }
 
     bool IsOut(float currentBeat) const;
     std::string GetScoreResult() const;
 
-    // 🚀 新增：音符的獨立啟動機制
     bool IsActivated() const { return m_IsActivated; }
     void Activate() { m_IsActivated = true; }
-    float GetTargetTime() const { return m_TargetTime; }
-    float GetDuration() const { return m_Duration; }
+    float GetTargetTime() const;
+    float GetDuration() const;
 
 private:
-    float m_TargetTime;
-    float m_startYPos;
-    float m_endYPos;
-    float m_Duration;
-
-    std::vector<std::shared_ptr<Util::GameObject>> m_GameObjects;
+    std::vector<Waypoint> m_Waypoints;       // 原始設計的轉折邏輯點
+    std::vector<Waypoint> m_RenderPoints;     // 經過平滑曲線插值後的細緻渲染點
+    std::vector<std::shared_ptr<Util::GameObject>> m_GameObjects; // [0]為頭Dot, [1]為尾Dot, 其餘為細分線段
 
     float m_HitBeatAmount = 0.0f;
-    bool m_IsActivated = false; // 🚀 紀錄這顆音符是否已經被玩家「重新吹氣」啟動
+    bool m_IsActivated = false;
+    float m_MaxAccuracy = 0.0f;
 };
 
 #endif

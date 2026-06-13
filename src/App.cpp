@@ -84,6 +84,22 @@ void App::Start() {
     m_ComboTextObj->SetZIndex(85.0f);
     m_ComboTextObj->m_Transform.translation = {0.0f, 80.0f};
 
+    // 初始化右上角即時分數 HUD 物件
+    m_RealScoreTextObj = std::make_shared<Util::GameObject>();
+    m_RealScoreTextObj->SetZIndex(85.0f);
+    m_RealScoreTextObj->m_Transform.translation = {500.0f, 310.0f};
+
+    // 初始化結算畫面 UI 物件
+    m_EndRankTextObj = std::make_shared<Util::GameObject>(); m_EndRankTextObj->SetZIndex(150.0f);
+    m_EndScoreTextObj = std::make_shared<Util::GameObject>(); m_EndScoreTextObj->SetZIndex(150.0f);
+    m_EndPerfectObj = std::make_shared<Util::GameObject>(); m_EndPerfectObj->SetZIndex(150.0f);
+    m_EndNiceObj = std::make_shared<Util::GameObject>(); m_EndNiceObj->SetZIndex(150.0f);
+    m_EndOkObj = std::make_shared<Util::GameObject>(); m_EndOkObj->SetZIndex(150.0f);
+    m_EndMehObj = std::make_shared<Util::GameObject>(); m_EndMehObj->SetZIndex(150.0f);
+    m_EndNastyObj = std::make_shared<Util::GameObject>(); m_EndNastyObj->SetZIndex(150.0f);
+    m_EndCoinTextObj = std::make_shared<Util::GameObject>(); m_EndCoinTextObj->SetZIndex(150.0f);
+    m_EndHintTextObj = std::make_shared<Util::GameObject>(); m_EndHintTextObj->SetZIndex(150.0f);
+
     m_SongList.clear();
     m_SongButtons.clear();
     fs::path songDir = fs::path(RESOURCE_DIR) / "songs";
@@ -228,6 +244,15 @@ void App::LoadSong(int index) {
         startPos += 9;
         size_t endPos = content.find("]]", startPos);
         std::string notesStr = content.substr(startPos, endPos - startPos + 1);
+
+        struct RawNote {
+            float bStart;
+            float bDur;
+            float startY;
+            float endY;
+        };
+        std::vector<RawNote> rawNotes;
+
         size_t bS = 0;
         while ((bS = notesStr.find('[', bS)) != std::string::npos) {
             size_t bE = notesStr.find(']', bS);
@@ -238,9 +263,36 @@ void App::LoadSong(int index) {
             if (ss >> bStart >> bDur >> sY >> dY >> eY) {
                 float mappedStartY = (sY / 165.0f) * 300.0f;
                 float mappedEndY   = (eY / 165.0f) * 300.0f;
-                m_Notes.push_back(std::make_shared<Note>(mappedStartY, mappedEndY, bStart, bDur));
+                rawNotes.push_back({bStart, bDur, mappedStartY, mappedEndY});
             }
             bS = bE + 1;
+        }
+
+        std::sort(rawNotes.begin(), rawNotes.end(), [](const RawNote& a, const RawNote& b){
+            return a.bStart < b.bStart;
+        });
+
+        if (!rawNotes.empty()) {
+            std::vector<Note::Waypoint> currentWaypoints;
+            currentWaypoints.push_back({rawNotes[0].bStart, rawNotes[0].startY});
+            currentWaypoints.push_back({rawNotes[0].bStart + rawNotes[0].bDur, rawNotes[0].endY});
+            float currentEndTime = rawNotes[0].bStart + rawNotes[0].bDur;
+
+            for (size_t i = 1; i < rawNotes.size(); ++i) {
+                if (std::abs(rawNotes[i].bStart - currentEndTime) < 0.01f) {
+                    currentWaypoints.push_back({rawNotes[i].bStart + rawNotes[i].bDur, rawNotes[i].endY});
+                    currentEndTime = rawNotes[i].bStart + rawNotes[i].bDur;
+                } else {
+                    m_Notes.push_back(std::make_shared<Note>(currentWaypoints));
+                    currentWaypoints.clear();
+                    currentWaypoints.push_back({rawNotes[i].bStart, rawNotes[i].startY});
+                    currentWaypoints.push_back({rawNotes[i].bStart + rawNotes[i].bDur, rawNotes[i].endY});
+                    currentEndTime = rawNotes[i].bStart + rawNotes[i].bDur;
+                }
+            }
+            if (!currentWaypoints.empty()) {
+                m_Notes.push_back(std::make_shared<Note>(currentWaypoints));
+            }
         }
     }
     file.close();
@@ -254,18 +306,149 @@ void App::LoadSong(int index) {
     m_IsCountingDown = false;
 
     m_LastBeat = 0.0f;
-    m_PerfectCount = 0;
-    m_GoodCount = 0;
-    m_MissCount = 0;
+    m_PerfectoCount = 0;
+    m_NiceCount = 0;
+    m_OkCount = 0;
+    m_MehCount = 0;
+    m_NastyCount = 0;
     m_Combo = 0;
     m_MaxCombo = 0;
     m_LastScoreString = "";
     m_LastCombo = -1;
-}
 
+    // 重置內部結算開關與分數
+    m_InSettlement = false;
+    m_Score = 0;
+    int totalNotes = m_Notes.size();
+    int simCombo = 0;
+    m_MaxPossibleScore = 0;
+    for (int i = 0; i < totalNotes; ++i) {
+        simCombo++;
+        m_MaxPossibleScore += 1000 * std::min(10, 1 + (simCombo / 10));
+    }
+    if (m_MaxPossibleScore <= 0) m_MaxPossibleScore = 1;
+
+    try { m_RealScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 36, "0", SDL_Color{255, 255, 255, 255})); } catch(...) {}
+}
 void App::Update() {
+    // =================================================================
+    // 👑 1. 專屬遊戲結算畫面（獨立顯示）
+    // =================================================================
+    if (m_InSettlement) {
+        m_Keyboard->Update();
+
+        // 🎨 繪製結算 UI 文字
+        if (m_EndSongNameTextObj) m_EndSongNameTextObj->Draw(); // 👈 繪製歌曲名稱
+        if (m_EndRankTextObj) m_EndRankTextObj->Draw();
+        if (m_EndScoreTextObj) m_EndScoreTextObj->Draw();
+        if (m_EndPerfectObj) m_EndPerfectObj->Draw();
+        if (m_EndNiceObj) m_EndNiceObj->Draw();
+        if (m_EndOkObj) m_EndOkObj->Draw();
+        if (m_EndMehObj) m_EndMehObj->Draw();
+        if (m_EndNastyObj) m_EndNastyObj->Draw();
+        if (m_EndCoinTextObj) m_EndCoinTextObj->Draw();
+        if (m_EndHintTextObj) m_EndHintTextObj->Draw();     // "PRESS [R] TO RESTART"
+        if (m_EndHintTextObj2) m_EndHintTextObj2->Draw();   // "PRESS [ENTER] TO RETURN TO MENU"
+
+        // 🕹️ 結算選單控制邏輯
+        if (Util::Input::IsKeyPressed(Util::Keycode::R)) {
+            m_InSettlement = false;
+            LoadSong(m_CurrentSongIndex);
+            g_RequireInputRelease = true;
+            return;
+        }
+
+        if (Util::Input::IsKeyPressed(Util::Keycode::RETURN)) {
+            Mix_HaltChannel(-1);
+            Mix_HaltMusic();
+            m_CurrentState = State::SELECT;
+            SDL_ShowCursor(SDL_ENABLE);
+            g_RequireInputRelease = true;
+            m_InSettlement = false;
+        }
+        return;
+    }
+
     m_Keyboard->Update();
 
+    // =================================================================
+    // 👑 2. 初始化結算畫面
+    // =================================================================
+    if (m_CurrentState == State::UPDATE && m_Notes.empty()) {
+        m_InSettlement = true;
+        SDL_ShowCursor(SDL_ENABLE);
+
+        // 初始化所有結算文字物件
+        if (!m_EndSongNameTextObj) m_EndSongNameTextObj = std::make_shared<Util::GameObject>(); // 👈 初始化
+        if (!m_EndRankTextObj) m_EndRankTextObj = std::make_shared<Util::GameObject>();
+        if (!m_EndScoreTextObj) m_EndScoreTextObj = std::make_shared<Util::GameObject>();
+        if (!m_EndPerfectObj) m_EndPerfectObj = std::make_shared<Util::GameObject>();
+        if (!m_EndNiceObj) m_EndNiceObj = std::make_shared<Util::GameObject>();
+        if (!m_EndOkObj) m_EndOkObj = std::make_shared<Util::GameObject>();
+        if (!m_EndMehObj) m_EndMehObj = std::make_shared<Util::GameObject>();
+        if (!m_EndNastyObj) m_EndNastyObj = std::make_shared<Util::GameObject>();
+        if (!m_EndCoinTextObj) m_EndCoinTextObj = std::make_shared<Util::GameObject>();
+        if (!m_EndHintTextObj) m_EndHintTextObj = std::make_shared<Util::GameObject>();
+        if (!m_EndHintTextObj2) m_EndHintTextObj2 = std::make_shared<Util::GameObject>();
+
+        // 🔥 強制把結算 UI 的 Z-Index 頂到最高（100）
+        float topZ = 100.0f;
+        m_EndSongNameTextObj->SetZIndex(topZ); // 👈 設定 Z-Index
+        m_EndRankTextObj->SetZIndex(topZ);     m_EndScoreTextObj->SetZIndex(topZ);
+        m_EndPerfectObj->SetZIndex(topZ);      m_EndNiceObj->SetZIndex(topZ);
+        m_EndOkObj->SetZIndex(topZ);           m_EndMehObj->SetZIndex(topZ);
+        m_EndNastyObj->SetZIndex(topZ);        m_EndCoinTextObj->SetZIndex(topZ);
+        m_EndHintTextObj->SetZIndex(topZ);     m_EndHintTextObj2->SetZIndex(topZ);
+
+        // 計算 Rank 評級
+        std::string rank = "F";
+        float ratio = (m_MaxPossibleScore > 0) ? (float)m_Score / m_MaxPossibleScore : 0.0f;
+        if (ratio >= 0.95f) rank = "S";
+        else if (ratio >= 0.85f) rank = "A";
+        else if (ratio >= 0.70f) rank = "B";
+        else if (ratio >= 0.55f) rank = "C";
+        else if (ratio >= 0.40f) rank = "D";
+
+        int tootCoins = (m_Score / 20000) + m_PerfectoCount;
+        const auto& song = m_SongList[m_CurrentSongIndex]; // 取得當前歌曲資訊
+
+        // 載入結算文字內容
+        // 🎵 歌曲名稱：字體大小設定為 150（比 RANK 的 120 還大！）
+        try { m_EndSongNameTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 150, song.displayName, SDL_Color{255, 255, 255, 255})); } catch (...) {}
+        try { m_EndRankTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 80, "RANK: " + rank, SDL_Color{255, 215, 0, 255})); } catch (...) {}
+        try { m_EndScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 50, "TOTAL SCORE: " + std::to_string(m_Score), SDL_Color{255, 255, 255, 255})); } catch (...) {}
+        try { m_EndPerfectObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 30, "PERFECTO: " + std::to_string(m_PerfectoCount), SDL_Color{255, 235, 100, 255})); } catch (...) {}
+        try { m_EndNiceObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 30, "NICE:     " + std::to_string(m_NiceCount), SDL_Color{100, 255, 100, 255})); } catch (...) {}
+        try { m_EndOkObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 30, "OK:       " + std::to_string(m_OkCount), SDL_Color{100, 255, 255, 255})); } catch (...) {}
+        try { m_EndMehObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 30, "MEH:      " + std::to_string(m_MehCount), SDL_Color{255, 180, 100, 255})); } catch (...) {}
+        try { m_EndNastyObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 30, "NASTY:    " + std::to_string(m_NastyCount), SDL_Color{240, 100, 100, 255})); } catch (...) {}
+        try { m_EndCoinTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 35, "TOOT COINS: " + std::to_string(tootCoins), SDL_Color{0, 255, 255, 255})); } catch (...) {}
+        try { m_EndHintTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 26, "PRESS [R] TO RESTART SONG", SDL_Color{255, 255, 0, 255})); } catch (...) {}
+        try { m_EndHintTextObj2->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 26, "PRESS [ENTER] TO RETURN TO MENU", SDL_Color{0, 255, 0, 255})); } catch (...) {}
+
+        // 📐 排版佈局配置（X軸保持原樣，Y軸往下移動調整）
+        m_EndSongNameTextObj->m_Transform.translation = {0.0f, 230.0f};   // 👈 歌曲名稱靠上水平置中
+
+        m_EndRankTextObj->m_Transform.translation = {250.0f, 0.0f};       // 👈 右側 RANK 下移 (原 80.0f)
+        m_EndCoinTextObj->m_Transform.translation = {250.0f, -120.0f};    // 👈 右側 哺幣下移 (原 -40.0f)
+
+        m_EndScoreTextObj->m_Transform.translation = {-250.0f, 90.0f};    // 👈 左側 分數下移 (原 180.0f)
+        float startY = 0.0f, stepY = -42.0f;                              // 👈 左側 判定起始點下移 (原 90.0f)
+        m_EndPerfectObj->m_Transform.translation = {-250.0f, startY};
+        m_EndNiceObj->m_Transform.translation = {-250.0f, startY + stepY};
+        m_EndOkObj->m_Transform.translation = {-250.0f, startY + stepY * 2};
+        m_EndMehObj->m_Transform.translation = {-250.0f, startY + stepY * 3};
+        m_EndNastyObj->m_Transform.translation = {-250.0f, startY + stepY * 4};
+
+        // 最底部的操作提示也稍微往下一點點留出空間
+        m_EndHintTextObj->m_Transform.translation = {0.0f, -260.0f};
+        m_EndHintTextObj2->m_Transform.translation = {0.0f, -310.0f};
+        return;
+    }
+
+    // =================================================================
+    // 3. 原本的遊戲遊玩邏輯 (保持不變)
+    // =================================================================
     if (m_Keyboard->IsEscDown()) {
         m_CurrentState = State::PAUSE;
         m_PauseStartTime = SDL_GetTicks();
@@ -299,8 +482,6 @@ void App::Update() {
     if (g_RequireInputRelease) { if (!blowing) g_RequireInputRelease = false; blowing = false; }
 
     int targetIdx = std::clamp((int)std::round((currentY + 300.0f) / 25.0f), 0, 24);
-
-    // 🚀 核心邏輯：偵測玩家是否剛給予了「新的吹氣 (Tonguing)」
     bool justBlew = blowing && !m_WasBlowing;
 
     if (blowing) {
@@ -314,40 +495,41 @@ void App::Update() {
     }
     m_WasBlowing = blowing;
 
-    // 🚀 換氣判定：如果有新的吹氣，去尋找範圍內「還沒啟動」的音符並將其啟動！
     if (justBlew) {
         for (auto& note : m_Notes) {
-            // 合法視窗：準備進入判定線前 0.4 拍，一直到音符完全結束前
             if (!note->IsActivated() &&
                 currentBeat >= note->GetTargetTime() - 0.4f &&
                 currentBeat <= note->GetTargetTime() + note->GetDuration()) {
                 note->Activate();
-                break; // 一次吹氣只能啟動最近的一顆音符
+                break;
             }
         }
     }
 
     bool uiNeedsUpdate = false;
     for (auto& note : m_Notes) {
-        note->Update(currentBeat, deltaBeat, blowing, targetIdx);
+        note->Update(currentBeat, deltaBeat, blowing, currentY);
     }
 
     for (auto it = m_Notes.begin(); it != m_Notes.end(); ) {
         if ((*it)->IsOut(currentBeat)) {
             std::string score = (*it)->GetScoreResult();
-            if (score == "Perfect") {
-                m_PerfectCount++; m_Combo++;
-            } else if (score == "Good") {
-                m_GoodCount++; m_Combo++;
-            } else {
-                m_MissCount++; m_Combo = 0;
-            }
-            if (m_Combo > m_MaxCombo) m_MaxCombo = m_Combo;
+            int baseScore = 0;
 
+            if (score == "PERFECTO") { m_PerfectoCount++; m_Combo++; baseScore = 1000; }
+            else if (score == "NICE") { m_NiceCount++; m_Combo++; baseScore = 800; }
+            else if (score == "OK") { m_OkCount++; m_Combo++; baseScore = 500; }
+            else if (score == "MEH") { m_MehCount++; m_Combo++; baseScore = 200; }
+            else if (score == "NASTY") { m_NastyCount++; m_Combo = 0; baseScore = 0; }
+
+            if (score != "NASTY") {
+                int multiplier = std::min(10, 1 + (m_Combo / 10));
+                m_Score += baseScore * multiplier;
+            }
+
+            if (m_Combo > m_MaxCombo) m_MaxCombo = m_Combo;
             m_LastScoreString = score;
             uiNeedsUpdate = true;
-            std::cout << "[判定] " << score << " | Combo: " << m_Combo << " (Max: " << m_MaxCombo << ")" << std::endl;
-
             it = m_Notes.erase(it);
         } else {
             ++it;
@@ -356,17 +538,22 @@ void App::Update() {
 
     if (uiNeedsUpdate || m_LastCombo != m_Combo) {
         SDL_Color color = {255, 255, 255, 255};
-        if (m_LastScoreString == "Perfect") color = {255, 215, 0, 255};
-        else if (m_LastScoreString == "Good") color = {0, 255, 0, 255};
-        else if (m_LastScoreString == "Miss") color = {255, 50, 50, 255};
+        if (m_LastScoreString == "PERFECTO") color = {255, 215, 0, 255};
+        else if (m_LastScoreString == "NICE") color = {0, 255, 0, 255};
+        else if (m_LastScoreString == "OK") color = {0, 255, 255, 255};
+        else if (m_LastScoreString == "MEH") color = {255, 165, 0, 255};
+        else if (m_LastScoreString == "NASTY") color = {160, 82, 45, 255};
 
         try {
             if (m_LastScoreString != "") {
-                m_ScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 70, m_LastScoreString, color));
+                m_ScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 50, m_LastScoreString, color));
+                m_ScoreTextObj->m_Transform.translation = {-540.0f, 300.0f};
             }
             if (m_Combo > 0) {
-                m_ComboTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 50, "Combo: " + std::to_string(m_Combo), SDL_Color{255, 255, 255, 255}));
+                m_ComboTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 40, "Combo: " + std::to_string(m_Combo), SDL_Color{255, 255, 255, 255}));
+                m_ComboTextObj->m_Transform.translation = {-540.0f, 250.0f};
             }
+            m_RealScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 38, std::to_string(m_Score), SDL_Color{255, 255, 255, 255}));
         } catch (...) {}
         m_LastCombo = m_Combo;
     }
@@ -374,18 +561,20 @@ void App::Update() {
     m_Background->Draw();
     for (auto& line : m_GuideLines) line->Draw();
     m_Indicator->Draw();
+
     for (auto& note : m_Notes) {
         auto& objs = note->GetGameObjects();
         if (objs.empty()) continue;
         float headX = objs[0]->m_Transform.translation.x;
-        float endX = objs[1]->m_Transform.translation.x;
-        if (endX < -1000.0f || headX > 1000.0f) continue;
+        float tailX = objs[1]->m_Transform.translation.x;
+        if (tailX < -1000.0f || headX > 1000.0f) continue;
         for (auto& obj : objs) obj->Draw();
     }
     m_Pattern->Draw();
 
     if (m_LastScoreString != "") m_ScoreTextObj->Draw();
     if (m_Combo > 0) m_ComboTextObj->Draw();
+    if (m_RealScoreTextObj) m_RealScoreTextObj->Draw();
 
     if (m_IsRHolding) {
         float progress = std::clamp((SDL_GetTicks() - m_RHoldStartTime) / 1000.0f, 0.0f, 1.0f);
@@ -405,7 +594,6 @@ void App::Update() {
         if (progress >= 1.0f) { LoadSong(m_CurrentSongIndex); g_RequireInputRelease = true; m_RequireRRelease = true; m_IsRHolding = false; return; }
     }
 }
-
 void App::PauseUpdate() {
     m_Keyboard->Update();
     auto mousePos = Util::Input::GetCursorPosition();
@@ -418,14 +606,15 @@ void App::PauseUpdate() {
         auto& objs = note->GetGameObjects();
         if (objs.empty()) continue;
         float headX = objs[0]->m_Transform.translation.x;
-        float endX = objs[1]->m_Transform.translation.x;
-        if (endX < -1000.0f || headX > 1000.0f) continue;
+        float tailX = objs[1]->m_Transform.translation.x;
+        if (tailX < -1000.0f || headX > 1000.0f) continue;
         for (auto& obj : objs) obj->Draw();
     }
     m_Pattern->Draw();
 
     if (m_LastScoreString != "") m_ScoreTextObj->Draw();
     if (m_Combo > 0) m_ComboTextObj->Draw();
+    if (m_RealScoreTextObj) m_RealScoreTextObj->Draw();
 
     if (m_IsCountingDown) {
         Uint32 elapsed = SDL_GetTicks() - m_CountdownStartTime;
@@ -436,16 +625,14 @@ void App::PauseUpdate() {
                 s_CountdownBG = std::make_shared<Util::GameObject>(); s_CountdownBG->SetDrawable(std::make_shared<Util::Image>(RESOURCE_DIR "/note-dot.png")); s_CountdownBG->SetZIndex(98.0f);
             }
             try { s_CountdownText->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 150, std::to_string(remain), SDL_Color{255, 255, 0, 255})); } catch(...) {}
-            s_CountdownBG->m_Transform.scale = {3.0f, 3.0f}; s_CountdownBG->Draw(); s_CountdownText->Draw();
+            s_CountdownBG->m_Transform.translation = {0.0f, 0.0f}; s_CountdownBG->m_Transform.scale = {3.0f, 3.0f};
+            s_CountdownBG->Draw(); s_CountdownText->Draw();
             return;
         } else {
             m_IsCountingDown = false;
             m_TotalPauseDuration += (SDL_GetTicks() - m_PauseStartTime);
-            Mix_ResumeMusic();
-            m_CurrentState = State::UPDATE;
-            SDL_ShowCursor(SDL_DISABLE);
-            g_RequireInputRelease = true;
-            m_LastFrameTime = SDL_GetTicks();
+            Mix_ResumeMusic(); m_CurrentState = State::UPDATE; SDL_ShowCursor(SDL_DISABLE);
+            g_RequireInputRelease = true; m_LastFrameTime = SDL_GetTicks();
             return;
         }
     }
@@ -453,9 +640,7 @@ void App::PauseUpdate() {
     m_PauseOverlay->Draw();
 
     if (m_Keyboard->IsEscDown()) {
-        m_IsCountingDown = true;
-        m_CountdownStartTime = SDL_GetTicks();
-        return;
+        m_IsCountingDown = true; m_CountdownStartTime = SDL_GetTicks(); return;
     }
 
     if (m_Keyboard->IsRKeyPressed()) {
@@ -483,7 +668,8 @@ void App::PauseUpdate() {
         try { s_RestartText->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 40, "RESTARTING... " + std::to_string(percent) + "%", SDL_Color{255, 255, 0, 255})); } catch(...) {}
 
         s_RestartText->m_Transform.translation = {0.0f, -120.0f};
-        s_RestartBG->m_Transform.scale = {2.0f, 2.0f}; s_RestartFill->m_Transform.scale = {2.0f * progress, 2.0f * progress};
+        s_RestartBG->m_Transform.translation = {0.0f, 0.0f}; s_RestartBG->m_Transform.scale = {2.0f, 2.0f};
+        s_RestartFill->m_Transform.translation = {0.0f, 0.0f}; s_RestartFill->m_Transform.scale = {2.0f * progress, 2.0f * progress};
 
         s_RestartBG->Draw(); s_RestartFill->Draw(); s_RestartText->Draw();
         if (progress >= 1.0f) { Mix_ResumeMusic(); LoadSong(m_CurrentSongIndex); m_CurrentState = State::UPDATE; SDL_ShowCursor(SDL_DISABLE); g_RequireInputRelease = true; m_RequireRRelease = true; m_IsRHolding = false; return; }
@@ -497,6 +683,7 @@ void App::PauseUpdate() {
     m_PrevMouseClick = click;
 }
 
+// 👑 3. 還原為原本安全的清理函數，供 main.cpp 程式關閉時安全調用
 void App::End() {
     Mix_HaltChannel(-1); Mix_HaltMusic();
     s_RestartText.reset(); s_RestartFill.reset(); s_RestartBG.reset();

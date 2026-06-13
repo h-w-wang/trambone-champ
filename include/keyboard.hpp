@@ -11,11 +11,10 @@ public:
 
     void Update();
 
-    bool IsBlowing() const;
+    bool IsBlowing();
     bool IsOffsetUp() const;
     bool IsOffsetDown() const;
 
-    // 🚀 新增暫停與重來的按鍵
     bool IsEscDown() const;
     bool IsRKeyPressed() const;
 
