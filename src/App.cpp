@@ -356,16 +356,16 @@ void App::Update() {
 
     if (uiNeedsUpdate || m_LastCombo != m_Combo) {
         SDL_Color color = {255, 255, 255, 255};
-        if (m_LastScoreString == "Perfect") color = {255, 215, 0, 255};
-        else if (m_LastScoreString == "Good") color = {0, 255, 0, 255};
-        else if (m_LastScoreString == "Miss") color = {255, 50, 50, 255};
+        if (m_LastScoreString == "Perfecto") ;
+        else if (m_LastScoreString == "Nice");
+        else if (m_LastScoreString == "Meh") ;
 
         try {
             if (m_LastScoreString != "") {
                 m_ScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 70, m_LastScoreString, color));
             }
             if (m_Combo > 0) {
-                m_ComboTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 50, "Combo: " + std::to_string(m_Combo), SDL_Color{255, 255, 255, 255}));
+                m_ComboTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 50, std::to_string(m_Combo) + "x", SDL_Color{255, 215, 0, 255}));
             }
         } catch (...) {}
         m_LastCombo = m_Combo;
