@@ -547,11 +547,11 @@ void App::Update() {
         try {
             if (m_LastScoreString != "") {
                 m_ScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 50, m_LastScoreString, color));
-                m_ScoreTextObj->m_Transform.translation = {-540.0f, 300.0f};
+                m_ScoreTextObj->m_Transform.translation = {-450.0f, 300.0f};
             }
             if (m_Combo > 0) {
                 m_ComboTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 40, "Combo: " + std::to_string(m_Combo), SDL_Color{255, 255, 255, 255}));
-                m_ComboTextObj->m_Transform.translation = {-540.0f, 250.0f};
+                m_ComboTextObj->m_Transform.translation = {-450.0f, 250.0f};
             }
             m_RealScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 38, std::to_string(m_Score), SDL_Color{255, 255, 255, 255}));
         } catch (...) {}
