@@ -18,7 +18,7 @@ static float IndexToMusicStep(float idx) {
     return 0.0f;
 }
 
-// Catmull-Rom 曲線插值公式：計算四個控制點之間的平滑曲線位置
+//計算四個控制點之間的平滑曲線位置
 static Note::Waypoint InterpolateCatmullRom(const Note::Waypoint& p0, const Note::Waypoint& p1, const Note::Waypoint& p2, const Note::Waypoint& p3, float t) {
     float t2 = t * t;
     float t3 = t2 * t;
@@ -39,7 +39,7 @@ static std::weak_ptr<Util::Image> s_NoteLineImage;
 Note::Note(const std::vector<Waypoint>& waypoints) : m_Waypoints(waypoints) {
     size_t n = m_Waypoints.size();
 
-    // 🚀 利用 Catmull-Rom 將音符折線修成圓滑曲線
+    //將音符折線修成圓滑曲線
     if (n >= 2) {
         for (size_t i = 0; i < n - 1; ++i) {
             Waypoint p0 = (i == 0) ? Waypoint{ m_Waypoints[0].beat - 1.0f, m_Waypoints[0].y } : m_Waypoints[i - 1];
@@ -47,7 +47,7 @@ Note::Note(const std::vector<Waypoint>& waypoints) : m_Waypoints(waypoints) {
             Waypoint p2 = m_Waypoints[i + 1];
             Waypoint p3 = (i + 2 >= n) ? Waypoint{ m_Waypoints[n - 1].beat + 1.0f, m_Waypoints[n - 1].y } : m_Waypoints[i + 2];
 
-            int subdivisions = 16; // 每一段大折線細切成 16 條微小線段，確保曲線看起來極度圓滑
+            int subdivisions = 16;
             for (int s = 0; s < subdivisions; ++s) {
                 float t = (float)s / subdivisions;
                 m_RenderPoints.push_back(InterpolateCatmullRom(p0, p1, p2, p3, t));
@@ -61,7 +61,7 @@ Note::Note(const std::vector<Waypoint>& waypoints) : m_Waypoints(waypoints) {
     auto lineImg = s_NoteLineImage.lock();
     if (!lineImg) { lineImg = std::make_shared<Util::Image>(RESOURCE_DIR "/warmup-light-rotated.png"); s_NoteLineImage = lineImg; }
 
-    // 🚀 核心修正：只生出頭、尾兩顆 Dot！徹底消滅任何中間轉彎處的圓鈕
+
     auto headDot = std::make_shared<Util::GameObject>();
     headDot->SetDrawable(dotImg); headDot->SetZIndex(5.1f);
     m_GameObjects.push_back(headDot); // m_GameObjects[0]
@@ -92,7 +92,7 @@ void Note::Update(float currentBeat, float deltaBeat, bool isBlowing, float curr
     float speed = 150.0f;
     if (m_RenderPoints.size() < 2) return;
 
-    // 1. 更新頭端與尾端兩顆唯一存在的白色圓點的位置
+    //更新頭端與尾端兩顆唯一存在的白色圓點的位置
     float headX = -350.0f + (m_RenderPoints.front().beat - currentBeat) * speed;
     m_GameObjects[0]->m_Transform.translation = {headX, m_RenderPoints.front().y};
     m_GameObjects[0]->m_Transform.scale = {0.5f, 0.5f};
@@ -101,7 +101,7 @@ void Note::Update(float currentBeat, float deltaBeat, bool isBlowing, float curr
     m_GameObjects[1]->m_Transform.translation = {tailX, m_RenderPoints.back().y};
     m_GameObjects[1]->m_Transform.scale = {0.5f, 0.5f};
 
-    // 2. 更新所有細化平滑後的微小長條線段
+    //更新所有細化平滑後的微小長條線段
     size_t numSegments = m_RenderPoints.size() - 1;
     for (size_t i = 0; i < numSegments; ++i) {
         auto& line = m_GameObjects[2 + i]; // 跳過前兩個頭尾 Dot
@@ -115,7 +115,7 @@ void Note::Update(float currentBeat, float deltaBeat, bool isBlowing, float curr
         line->m_Transform.scale = {std::sqrt(dx * dx + dy * dy) / 256.0f, 0.5f};
     }
 
-    // 3. 長條即時音高追蹤與判定（基於平滑曲線優化，讓判定體感更貼合視覺）
+    //長條即時音高追蹤與判定
     float targetTime = GetTargetTime();
     float duration = GetDuration();
     if (currentBeat >= targetTime && currentBeat <= targetTime + duration) {

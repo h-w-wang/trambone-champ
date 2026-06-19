@@ -14,7 +14,7 @@ void Keyboard::Update() {
                   Util::Input::IsKeyPressed(Util::Keycode::X) ||
                   Util::Input::IsKeyPressed(Util::Keycode::C);
 
-    // 偵測單次按下的功能鍵（使用 IsKeyDown 避免單次按下卻觸發數十次）
+    // 偵測單次按下的功能鍵
     m_OffsetUp = Util::Input::IsKeyDown(Util::Keycode::UP);
     m_OffsetDown = Util::Input::IsKeyDown(Util::Keycode::DOWN);
 
@@ -23,7 +23,6 @@ void Keyboard::Update() {
 }
 
 bool Keyboard::IsBlowing() {
-    // 直接回傳在 Update 中計算完畢的狀態，確保邏輯統一
     return m_IsBlowing;
 }
 

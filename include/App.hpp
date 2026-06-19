@@ -113,7 +113,6 @@
         std::shared_ptr<Util::GameObject> m_EndCoinTextObj;
         std::shared_ptr<Util::GameObject> m_EndHintTextObj;
         std::shared_ptr<Util::GameObject> m_EndHintTextObj2;
-        // 👑 關鍵防崩潰：內部結算畫面狀態開關
         bool m_InSettlement = false;
     };
 

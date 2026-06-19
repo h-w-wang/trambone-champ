@@ -331,14 +331,11 @@ void App::LoadSong(int index) {
     try { m_RealScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 36, "0", SDL_Color{255, 255, 255, 255})); } catch(...) {}
 }
 void App::Update() {
-    // =================================================================
-    // 👑 1. 專屬遊戲結算畫面（獨立顯示）
-    // =================================================================
     if (m_InSettlement) {
         m_Keyboard->Update();
 
-        // 🎨 繪製結算 UI 文字
-        if (m_EndSongNameTextObj) m_EndSongNameTextObj->Draw(); // 👈 繪製歌曲名稱
+        // 繪製結算 UI 文字
+        if (m_EndSongNameTextObj) m_EndSongNameTextObj->Draw(); // 繪製歌曲名稱
         if (m_EndRankTextObj) m_EndRankTextObj->Draw();
         if (m_EndScoreTextObj) m_EndScoreTextObj->Draw();
         if (m_EndPerfectObj) m_EndPerfectObj->Draw();
@@ -350,7 +347,7 @@ void App::Update() {
         if (m_EndHintTextObj) m_EndHintTextObj->Draw();     // "PRESS [R] TO RESTART"
         if (m_EndHintTextObj2) m_EndHintTextObj2->Draw();   // "PRESS [ENTER] TO RETURN TO MENU"
 
-        // 🕹️ 結算選單控制邏輯
+        // 結算選單控制
         if (Util::Input::IsKeyPressed(Util::Keycode::R)) {
             m_InSettlement = false;
             LoadSong(m_CurrentSongIndex);
@@ -371,15 +368,18 @@ void App::Update() {
 
     m_Keyboard->Update();
 
-    // =================================================================
-    // 👑 2. 初始化結算畫面
-    // =================================================================
+
+    //2. 初始化結算畫面
     if (m_CurrentState == State::UPDATE && m_Notes.empty()) {
         m_InSettlement = true;
         SDL_ShowCursor(SDL_ENABLE);
 
+        Mix_HaltChannel(-1);
+        Mix_HaltMusic();
+        m_WasBlowing = false;
+
         // 初始化所有結算文字物件
-        if (!m_EndSongNameTextObj) m_EndSongNameTextObj = std::make_shared<Util::GameObject>(); // 👈 初始化
+        if (!m_EndSongNameTextObj) m_EndSongNameTextObj = std::make_shared<Util::GameObject>(); // 初始化
         if (!m_EndRankTextObj) m_EndRankTextObj = std::make_shared<Util::GameObject>();
         if (!m_EndScoreTextObj) m_EndScoreTextObj = std::make_shared<Util::GameObject>();
         if (!m_EndPerfectObj) m_EndPerfectObj = std::make_shared<Util::GameObject>();
@@ -391,9 +391,9 @@ void App::Update() {
         if (!m_EndHintTextObj) m_EndHintTextObj = std::make_shared<Util::GameObject>();
         if (!m_EndHintTextObj2) m_EndHintTextObj2 = std::make_shared<Util::GameObject>();
 
-        // 🔥 強制把結算 UI 的 Z-Index 頂到最高（100）
+        //強制把結算 UI 的 Z-Index 頂到最高（100）
         float topZ = 100.0f;
-        m_EndSongNameTextObj->SetZIndex(topZ); // 👈 設定 Z-Index
+        m_EndSongNameTextObj->SetZIndex(topZ); //設定 Z-Index
         m_EndRankTextObj->SetZIndex(topZ);     m_EndScoreTextObj->SetZIndex(topZ);
         m_EndPerfectObj->SetZIndex(topZ);      m_EndNiceObj->SetZIndex(topZ);
         m_EndOkObj->SetZIndex(topZ);           m_EndMehObj->SetZIndex(topZ);
@@ -413,7 +413,7 @@ void App::Update() {
         const auto& song = m_SongList[m_CurrentSongIndex]; // 取得當前歌曲資訊
 
         // 載入結算文字內容
-        // 🎵 歌曲名稱：字體大小設定為 150（比 RANK 的 120 還大！）
+        // 歌曲名稱：字體大小設定為 150
         try { m_EndSongNameTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 150, song.displayName, SDL_Color{255, 255, 255, 255})); } catch (...) {}
         try { m_EndRankTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 80, "RANK: " + rank, SDL_Color{255, 215, 0, 255})); } catch (...) {}
         try { m_EndScoreTextObj->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 50, "TOTAL SCORE: " + std::to_string(m_Score), SDL_Color{255, 255, 255, 255})); } catch (...) {}
@@ -427,28 +427,25 @@ void App::Update() {
         try { m_EndHintTextObj2->SetDrawable(std::make_shared<Util::Text>(RESOURCE_DIR "/font.ttc", 26, "PRESS [ENTER] TO RETURN TO MENU", SDL_Color{0, 255, 0, 255})); } catch (...) {}
 
         // 📐 排版佈局配置（X軸保持原樣，Y軸往下移動調整）
-        m_EndSongNameTextObj->m_Transform.translation = {0.0f, 230.0f};   // 👈 歌曲名稱靠上水平置中
+        m_EndSongNameTextObj->m_Transform.translation = {0.0f, 230.0f};   //歌曲名稱靠上水平置中
 
-        m_EndRankTextObj->m_Transform.translation = {250.0f, 0.0f};       // 👈 右側 RANK 下移 (原 80.0f)
-        m_EndCoinTextObj->m_Transform.translation = {250.0f, -120.0f};    // 👈 右側 哺幣下移 (原 -40.0f)
+        m_EndRankTextObj->m_Transform.translation = {250.0f, 0.0f};       //右側 RANK 下移 (原 80.0f)
+        m_EndCoinTextObj->m_Transform.translation = {250.0f, -120.0f};    //右側 哺幣下移 (原 -40.0f)
 
-        m_EndScoreTextObj->m_Transform.translation = {-250.0f, 90.0f};    // 👈 左側 分數下移 (原 180.0f)
-        float startY = 0.0f, stepY = -42.0f;                              // 👈 左側 判定起始點下移 (原 90.0f)
+        m_EndScoreTextObj->m_Transform.translation = {-250.0f, 90.0f};    //左側 分數下移 (原 180.0f)
+        float startY = 0.0f, stepY = -42.0f;                              //左側 判定起始點下移 (原 90.0f)
         m_EndPerfectObj->m_Transform.translation = {-250.0f, startY};
         m_EndNiceObj->m_Transform.translation = {-250.0f, startY + stepY};
         m_EndOkObj->m_Transform.translation = {-250.0f, startY + stepY * 2};
         m_EndMehObj->m_Transform.translation = {-250.0f, startY + stepY * 3};
         m_EndNastyObj->m_Transform.translation = {-250.0f, startY + stepY * 4};
 
-        // 最底部的操作提示也稍微往下一點點留出空間
         m_EndHintTextObj->m_Transform.translation = {0.0f, -260.0f};
         m_EndHintTextObj2->m_Transform.translation = {0.0f, -310.0f};
         return;
     }
 
-    // =================================================================
-    // 3. 原本的遊戲遊玩邏輯 (保持不變)
-    // =================================================================
+    // 3. 原本的遊戲遊玩邏輯
     if (m_Keyboard->IsEscDown()) {
         m_CurrentState = State::PAUSE;
         m_PauseStartTime = SDL_GetTicks();
@@ -683,7 +680,7 @@ void App::PauseUpdate() {
     m_PrevMouseClick = click;
 }
 
-// 👑 3. 還原為原本安全的清理函數，供 main.cpp 程式關閉時安全調用
+//3. 還原為原本安全的清理函數，供 main.cpp 程式關閉時安全調用
 void App::End() {
     Mix_HaltChannel(-1); Mix_HaltMusic();
     s_RestartText.reset(); s_RestartFill.reset(); s_RestartBG.reset();
